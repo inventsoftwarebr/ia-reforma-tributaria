@@ -1,0 +1,464 @@
+{
+  "name": "MUDANÇA FISCAL - Invent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ia-whatsappinvent",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "eb024552-9a87-4876-885c-5bfb1196599d",
+      "name": "Webhook3",
+      "webhookId": "df99fcd3-23ef-470f-8d95-726dc81e1bd6"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "73ab0fbc-3441-4fa7-ab0e-dcf7f9b91d85",
+              "name": "Numero",
+              "value": "={{ $json.body.data.key.remoteJid }}",
+              "type": "string"
+            },
+            {
+              "id": "36645aeb-b33f-4d75-b87b-4beda9dd79b6",
+              "name": "instacia",
+              "value": "={{ $json.body.instance }}",
+              "type": "string"
+            },
+            {
+              "id": "c47c8a03-8a12-4baa-9c8a-b10cf2b3cfb0",
+              "name": "mensagem",
+              "value": "={{ $json.body.data.message.conversation }}",
+              "type": "string"
+            },
+            {
+              "id": "ee1dc354-93e1-40d1-8311-eb5642bae6e9",
+              "name": "idmensagem",
+              "value": "={{ $json.body.data.key.id }}",
+              "type": "string"
+            },
+            {
+              "id": "00d97f36-ab27-4c77-9ad7-9cc63b5afa73",
+              "name": "nome",
+              "value": "={{ $json.body.data.pushName }}",
+              "type": "string"
+            },
+            {
+              "id": "bf58dd23-e129-4ca4-a163-cb2d91161e87",
+              "name": "leadGeral",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        464,
+        0
+      ],
+      "id": "30f2edd7-7bfe-48d3-b07c-de5de774c4cc",
+      "name": "2 - Organizar Dados Iniciais1"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=chat_history:{{ $('Webhook3').item.json.body.data.key.remoteJid }}",
+        "sessionTTL": 259200,
+        "contextWindowLength": 40
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryRedisChat",
+      "typeVersion": 1.5,
+      "position": [
+        1072,
+        272
+      ],
+      "id": "fb14d3f6-2432-40c8-857a-027958e4be69",
+      "name": "Redis Chat Memory",
+      "credentials": {
+        "redis": {
+          "id": "dHfF8L4b7OmbZVOk",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "=",
+        "remoteJid": "={{ $('verificageral').item.json.Numero }}",
+        "messageText": "={{ $json.message }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        2464,
+        0
+      ],
+      "id": "9b707f06-3c68-4f6c-ab62-aa7f9f999daf",
+      "name": "9 - Enviar Resposta ao Cliente2",
+      "credentials": {
+        "evolutionApi": {
+          "id": "hmia0cWghRL4hclv",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- INPUT PRINCIPAL ---\nconst aiAgentRawOutput = $input.item.json.output; \nlet standardizedOutput = {}; \nlet parsedJson = null; \n\n// --- PASSO 1: Procurar JSON em qualquer string ---\nif (typeof aiAgentRawOutput === 'string') {\n  try {\n    // Regex para encontrar o primeiro bloco JSON válido\n    const match = aiAgentRawOutput.match(/{[\\s\\S]*}/);\n    if (match) {\n      let jsonString = match[0];\n\n      // Remover comentários no estilo \"// comentário\"\n      jsonString = jsonString.replace(/\\/\\/.*$/gm, '');\n\n      parsedJson = JSON.parse(jsonString);\n    }\n  } catch (e) {\n    console.error(\"Erro ao parsear JSON dentro da string:\", e, aiAgentRawOutput);\n    parsedJson = null;\n  }\n}\n// --- PASSO 1B: Se já for objeto ---\nelse if (typeof aiAgentRawOutput === 'object' && aiAgentRawOutput !== null) {\n  parsedJson = aiAgentRawOutput;\n}\n\n// --- PASSO 2: CLASSIFICAR O OUTPUT ---\nif (parsedJson && typeof parsedJson === 'object' && parsedJson.action) {\n  standardizedOutput = {\n    type: 'action_json',\n    action: parsedJson.action,\n    sheet_data: parsedJson.sheet_data || null,\n    bot_response: parsedJson.bot_response || parsedJson.final_bot_response_text || null\n  };\n} \nelse if (typeof aiAgentRawOutput === 'string') {\n  standardizedOutput = {\n    type: 'text_response',\n    message: aiAgentRawOutput\n  };\n} \nelse {\n  standardizedOutput = {\n    type: 'text_response',\n    message: \"Desculpe, não entendi. Poderia repetir?\"\n  };\n}\n\n// --- PASSO 3: Propagação dos dados originais ---\nstandardizedOutput.client_id = $input.item.json.Numero || null;\nstandardizedOutput.instancia = $input.item.json.instacia || null;\nstandardizedOutput.user_message_original = $input.item.json.mensagem || null;\nstandardizedOutput.client_name_from_webhook = $input.item.json.nome || null;\nstandardizedOutput.current_date = $input.item.json.current_date || null;\nstandardizedOutput.current_time = $input.item.json.current_time || null;\nstandardizedOutput.initial_interaction_timestamp = $input.item.json.initial_interaction_timestamp || null;\n\nreturn [{ json: standardizedOutput }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2048,
+        0
+      ],
+      "id": "563b73b2-41ed-445d-8322-d8b41b0ed260",
+      "name": "6.0 - Normalizar AI Agent Output"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.data.key.fromMe }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "false",
+                      "singleValue": true
+                    },
+                    "id": "5071b139-ea43-45eb-8f6d-5af1ae09acd2"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "usuario"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "db10b47e-ed43-4e37-a614-869638f85509",
+                    "leftValue": "={{ $json.body.data.key.fromMe }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "eu"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        240,
+        0
+      ],
+      "id": "0a0283e6-4641-46cf-bb8f-30ffe197a450",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1) Lê todos os itens de entrada (do Merge)\nconst inputs = $input.all();\n\n// 2) Separa iniciais (item 0) e planilha (item 1, pode não existir)\nconst iniciais = inputs[0]?.json || {};\nconst planilha = inputs[1]?.json || {};\n\n// 3) Junta ambos num único objeto\nconst merged = {\n  ...iniciais,\n  ...planilha\n};\n\n// 4) Remove chaves nulas/undefined\nconst cleanPayload = Object.fromEntries(\n  Object.entries(merged)\n    .filter(([_, v]) => v != null),\n);\n\n// 5) Gera timestamps em Europe/Lisbon\nconst now = new Date();\nconst options = {\n  year: 'numeric', month: '2-digit', day: '2-digit',\n  hour: '2-digit', minute: '2-digit', second: '2-digit',\n  hour12: false, timeZone: 'Europe/Lisbon'\n};\nconst initialInteractionTimestamp = new Intl.DateTimeFormat('pt-PT', options).format(now);\nconst currentDate  = new Intl.DateTimeFormat('pt-PT', {\n  day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Lisbon'\n}).format(now);\nconst currentTime  = new Intl.DateTimeFormat('pt-PT', {\n  hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Lisbon'\n}).format(now);\n\n// 6) Retorna um só item com tudo\nreturn [{\n  json: {\n    ...cleanPayload,\n    current_date: currentDate,\n    current_time: currentTime,\n    initial_interaction_timestamp: initialInteractionTimestamp\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        0
+      ],
+      "id": "ead3125a-2cce-42df-b86f-c8250c68c972",
+      "name": "verificageral"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.mensagem }}",
+        "options": {
+          "systemMessage": "={\n  \"role\": \"system\",\n  \"content\": [\n    \"Você é um agente especializado em Reforma Tributária no Brasil, desenvolvido pela *Invent Software*.\",\n    \"Sua função é orientar, explicar e tirar dúvidas de gestores, empresários, contadores e demais interessados.\",\n    \"\",\n    \"REGRAS FUNDAMENTAIS:\",\n    \"- Sempre consulte as tools 'docs' e 'http' primeiro.\",\n    \"- Se a resposta exata não estiver nas tools, utilize sua base de conhecimento para responder com o que sabe sobre o assunto.\",\n    \"- Você deve sempre fornecer uma resposta, mesmo que não seja exatamente o que a pessoa perguntou.\",\n    \"- Nunca diga que não tem informação.\",\n    \"- Combine as informações do documento, do site e do seu conhecimento como modelo para criar a resposta mais útil possível.\",\n    \"- Lembre-se: você é uma IA da *Invent Software* (diga isso de forma discreta na primeira interação do atendimento).\",\n    \"\",\n    \"FORMATAÇÃO PARA WHATSAPP:\",\n    \"- Para negrito, utilize somente um asterisco antes e depois (*assim*).\",\n    \"- Evite listas muito longas; prefira blocos curtos e diretos.\",\n    \"\",\n    \"ESTILO DAS RESPOSTAS:\",\n    \"- Seja claro, prático e didático.\",\n    \"- Use exemplos apenas quando fizerem sentido e puderem ser inferidos das tools ou do seu conhecimento confiável.\",\n    \"- Tom profissional e acessível, postura consultiva.\",\n    \"\",\n    \"POLÍTICA DE OFERTA DO SIMULADOR (CONDICIONAL):\",\n    \"- Objetivo: oferecer o *Simulador da Reforma Tributária* da *Invent Software* sem ser repetitivo.\",\n    \"- Em vez de enviar o link automaticamente, *pergunte primeiro se a pessoa deseja conhecer o simulador*. Só envie o link se a resposta for afirmativa.\",\n    \"- Condições para *ofertar* (perguntar se quer conhecer): quando o usuário mencionar cálculo de impacto, alíquotas (IBS/CBS), créditos, transição, preço final, planejamento tributário, NF-e/NFS-e com reflexos da Reforma, ou comparar cenários.\",\n    \"- Frequência: não repetir a oferta se já foi feita nas últimas 6 mensagens do mesmo tópico (defina um marcador interno: oferta_simulador_recentemente=true; resete para false após 6 mensagens, mudança de assunto ou nova sessão).\",\n    \"- Se o usuário disser 'não', respeite e *não* ofereça novamente naquele tópico. Continue ajudando.\",\n    \"- Se o usuário disser 'sim', envie *exatamente* este link e siga o atendimento normalmente: https://lp.inventsoftware.com.br/simulador-reforma-tributaria/?utm_source=ia+whatsapp+mkt&utm_campaign=simulador+da+reforma+tributaria\",\n    \"\",\n    \"INSTRUÇÕES DE FLUXO (WHATSAPP):\",\n    \"- Quando detectar contexto adequado, use uma pergunta curta de oferta, por exemplo: 'Posso te mostrar um simulador que calcula esses impactos na prática?'.\",\n    \"- Respostas esperadas:\",\n    \"  • Se SIM (ou equivalente): envie o link e um complemento curto explicando o benefício.\",\n    \"  • Se NÃO (ou equivalente): agradeça e siga com a explicação, sem enviar link.\",\n    \"- Não repita o link em mensagens consecutivas.\",\n    \"\",\n    \"BLOCOS PRONTOS (SÓ COMO MODELOS):\",\n    \"- Primeira apresentação (uma vez por conversa): 'Sou uma IA da *Invent Software* e estou aqui para te ajudar com a *Reforma Tributária*. Como posso te orientar?'\",\n    \"- Oferta (quando apropriado): 'Quer conhecer um simulador que projeta o impacto da Reforma no seu caso? *Posso te enviar o link*.'\",\n    \"- Após confirmação positiva: 'Perfeito! Aqui está: https://lp.inventsoftware.com.br/simulador-reforma-tributaria/?utm_source=ia+whatsapp+mkt&utm_campaign=simulador+da+reforma+tributaria — Com ele você visualiza cenários, alíquotas e efeitos no preço/custo.'\",\n    \"- Após recusa: 'Sem problemas! Vamos seguir por aqui. Me diga seu cenário que eu explico como ficam as regras.'\",\n    \"\",\n    \"OBJETIVO:\",\n    \"Fornecer segurança e clareza para qualquer pessoa que queira entender a *Reforma Tributária*, seus impactos, cronogramas, novos impostos e implicações práticas, usando as ferramentas (docs + http) e, quando necessário, complementando com sua base de conhecimento. Sempre que fizer sentido, *pergunte* se a pessoa deseja conhecer o *Simulador da Reforma Tributária* da *Invent Software* e *só envie o link se ela aceitar*.\"\n  ]\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        0
+      ],
+      "id": "74d97f74-2f5a-49a2-8737-59a2af016606",
+      "name": "Router"
+    },
+    {
+      "parameters": {
+        "options": {
+          "timezone": "Europe/Lisbon"
+        }
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        224
+      ],
+      "id": "9a5611f7-7f60-4daa-a508-dd7f129a8f44",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        880,
+        240
+      ],
+      "id": "378c3109-8de0-451c-9199-45f3d428a6d4",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "b2ZKtjFntUpS8ehd",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        256
+      ],
+      "id": "f6dfde87-82cf-464f-97de-7892e11cf97c",
+      "name": "Calculator"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentURL": "https://docs.google.com/document/d/1eAOFM9z_SK3UwtMEbsCpdllEMauP0DlZO9AjjgBBZMk/edit?tab=t.0"
+      },
+      "type": "n8n-nodes-base.googleDocsTool",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        448
+      ],
+      "id": "c0deead0-8175-4c85-a574-0c777cd1abb0",
+      "name": "Get a document in Google Docs",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "QYd0b1Uf7S7jEmK9",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "busque no site a resposta",
+        "url": "https://www.contabeis.com.br/tudo-sobre/reforma-tributaria",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        1472,
+        448
+      ],
+      "id": "757bdc26-8221-4ff1-8ef8-9dee176bed64",
+      "name": "HTTP Request"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook3": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2 - Organizar Dados Iniciais1": {
+      "main": [
+        [
+          {
+            "node": "verificageral",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Router",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6.0 - Normalizar AI Agent Output": {
+      "main": [
+        [
+          {
+            "node": "9 - Enviar Resposta ao Cliente2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "2 - Organizar Dados Iniciais1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "verificageral": {
+      "main": [
+        [
+          {
+            "node": "Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router": {
+      "main": [
+        [
+          {
+            "node": "6.0 - Normalizar AI Agent Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "Router",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Router",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "Router",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a document in Google Docs": {
+      "ai_tool": [
+        [
+          {
+            "node": "Router",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "ai_tool": [
+        [
+          {
+            "node": "Router",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b613d2df-38e3-4aaf-b3c7-5f302685986d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "42dc573cbd37366eaced404237f94ca89202be2591456f155abc305947067cc2"
+  },
+  "nodeGroups": [],
+  "id": "EnHMeVrDmM3TEIPk",
+  "tags": [
+    {
+      "updatedAt": "2025-10-29T13:05:34.036Z",
+      "createdAt": "2025-10-29T13:05:34.036Z",
+      "id": "BVaQZdjotEnbTeEa",
+      "name": "invent"
+    }
+  ]
+}

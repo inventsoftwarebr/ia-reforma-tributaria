@@ -1,0 +1,451 @@
+{
+  "name": "MUDANÇA FISCAL - Invent (hotfix)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ia-whatsappinvent",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "eb024552-9a87-4876-885c-5bfb1196599d",
+      "name": "Webhook3",
+      "webhookId": "df99fcd3-23ef-470f-8d95-726dc81e1bd6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===========================================================================\n// 1 - Validar e Normalizar\n// Achados tratados (ver auditoria-n8n.md): S1, S2, S3, B1, B2, B3, B6\n// ===========================================================================\n\n// PASSO OBRIGATÓRIO: gere um segredo forte, cole aqui e configure o Evolution\n// para chamar o webhook com ?token=<segredo> no fim da URL (ou enviando o\n// header x-invent-token). Enquanto estiver vazio a checagem é ignorada, para\n// que a importação deste fluxo não derrube o bot antes de você configurar.\nconst EXPECTED_TOKEN = '';\n\n// Instâncias autorizadas. Vazio = aceita qualquer instância (menos seguro).\nconst ALLOWED_INSTANCES = [];\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const body = item.json.body || {};\n  const headers = item.json.headers || {};\n  const query = item.json.query || {};\n  const data = body.data || {};\n  const key = data.key || {};\n\n  // --- 1. Autenticação do webhook (S1/S2) --------------------------------\n  // Sem isso, um POST forjado faz a instância da Invent enviar WhatsApp para\n  // qualquer número, porque o destinatário vem do próprio corpo da requisição.\n  if (EXPECTED_TOKEN) {\n    const enviado = headers['x-invent-token'] || query.token;\n    if (enviado !== EXPECTED_TOKEN) continue;\n  }\n\n  // --- 2. Instância autorizada (S3) --------------------------------------\n  const instancia = String(body.instance || '');\n  if (!instancia) continue;\n  if (ALLOWED_INSTANCES.length && !ALLOWED_INSTANCES.includes(instancia)) continue;\n\n  // --- 3. Só mensagem recebida de pessoa, em conversa 1:1 (B6) -----------\n  if (key.fromMe === true) continue;\n\n  const jid = String(key.remoteJid || '');\n  // Descarta grupo (@g.us), lista de transmissão, status e JID malformado.\n  if (!/^[0-9]{10,15}@s\\.whatsapp\\.net$/.test(jid)) continue;\n\n  // --- 4. Normalizar QUALQUER tipo de mensagem (B1) -----------------------\n  // O fluxo antigo só lia message.conversation: áudio, imagem, resposta\n  // citada e mensagem com link chegavam vazias ao agente.\n  const m = data.message || {};\n  let texto = '';\n  let tipo = 'desconhecido';\n\n  if (typeof m.conversation === 'string') {\n    texto = m.conversation;\n    tipo = 'texto';\n  } else if (m.extendedTextMessage && m.extendedTextMessage.text) {\n    texto = m.extendedTextMessage.text;\n    tipo = 'texto_citado';\n  } else if (m.buttonsResponseMessage && m.buttonsResponseMessage.selectedDisplayText) {\n    texto = m.buttonsResponseMessage.selectedDisplayText;\n    tipo = 'botao';\n  } else if (m.listResponseMessage && m.listResponseMessage.title) {\n    texto = m.listResponseMessage.title;\n    tipo = 'lista';\n  } else if (m.templateButtonReplyMessage && m.templateButtonReplyMessage.selectedDisplayText) {\n    texto = m.templateButtonReplyMessage.selectedDisplayText;\n    tipo = 'botao';\n  } else if (m.imageMessage) {\n    texto = m.imageMessage.caption || '';\n    tipo = 'imagem';\n  } else if (m.videoMessage) {\n    texto = m.videoMessage.caption || '';\n    tipo = 'video';\n  } else if (m.audioMessage) {\n    tipo = 'audio';\n  } else if (m.documentMessage || m.documentWithCaptionMessage) {\n    tipo = 'documento';\n  } else if (m.stickerMessage) {\n    tipo = 'sticker';\n  } else if (m.locationMessage) {\n    tipo = 'localizacao';\n  } else if (m.reactionMessage || m.protocolMessage) {\n    // Reação e evento de protocolo não merecem resposta.\n    continue;\n  }\n\n  texto = String(texto || '').trim();\n\n  // Sem texto aproveitável, o agente não é chamado: respondemos pedindo texto.\n  const suportado = texto.length > 0;\n\n  // --- 5. Timestamps no fuso do Brasil (B3) -------------------------------\n  // O fluxo antigo usava Europe/Lisbon: 4-5h à frente, o que fazia um agente\n  // que fala de prazos informar a data errada perto da virada do dia.\n  const agora = new Date();\n  const TZ = 'America/Sao_Paulo';\n  const fmt = (opts) => new Intl.DateTimeFormat('pt-BR', Object.assign({ timeZone: TZ }, opts)).format(agora);\n\n  out.push({\n    json: {\n      numero: jid,\n      instancia: instancia,\n      nome: String(data.pushName || '').trim(),\n      idmensagem: String(key.id || ''),\n      texto: texto,\n      tipo: tipo,\n      suportado: suportado,\n      current_date: fmt({ day: '2-digit', month: '2-digit', year: 'numeric' }),\n      current_time: fmt({ hour: '2-digit', minute: '2-digit', hour12: false }),\n    },\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "id": "a1f0c1e2-0001-4a01-9a01-100000000001",
+      "name": "1 - Validar e Normalizar"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b1f0c1e2-0002-4a02-9a02-200000000001",
+                    "leftValue": "={{ $json.suportado }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "texto"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b1f0c1e2-0002-4a02-9a02-200000000002",
+                    "leftValue": "={{ $json.suportado }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "false",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "midia"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        480,
+        0
+      ],
+      "id": "a1f0c1e2-0002-4a02-9a02-100000000002",
+      "name": "2 - Tem Texto?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1f0c1e2-0003-4a03-9a03-300000000001",
+              "name": "numero",
+              "value": "={{ $json.numero }}",
+              "type": "string"
+            },
+            {
+              "id": "c1f0c1e2-0003-4a03-9a03-300000000002",
+              "name": "instancia",
+              "value": "={{ $json.instancia }}",
+              "type": "string"
+            },
+            {
+              "id": "c1f0c1e2-0003-4a03-9a03-300000000003",
+              "name": "message",
+              "value": "={{ $json.tipo === 'audio' ? 'Recebi seu áudio, mas ainda não consigo escutar mensagens de voz por aqui. Pode me escrever sua dúvida sobre a *Reforma Tributária* em texto? Assim eu te respondo na hora.' : 'Recebi sua mensagem, mas ainda não consigo ler esse tipo de conteúdo por aqui. Pode me escrever sua dúvida sobre a *Reforma Tributária* em texto? Assim eu te respondo na hora.' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        720,
+        208
+      ],
+      "id": "a1f0c1e2-0003-4a03-9a03-100000000003",
+      "name": "2b - Pedir Texto"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.texto }}",
+        "options": {
+          "systemMessage": "Você é a IA da Reforma Tributária da Invent Software, atendendo pelo WhatsApp.\nPúblico: empresários, gestores, contadores e profissionais fiscais no Brasil.\n\n## Fonte de verdade\n\nConsulte SEMPRE a ferramenta de documento da Invent antes de responder algo factual.\n\nSe o material não sustentar a resposta, diga isso e ofereça falar com um especialista da\nInvent. NÃO complete lacunas com suposição: em matéria tributária um número inventado causa\nprejuízo real e sai com a marca da Invent.\n\nUse como referência:\n\"Essa parte eu não consigo confirmar na nossa base técnica, e prefiro não arriscar um palpite\nem cima de tributo. Quer que eu chame um especialista da Invent para te responder com segurança?\"\n\n## Citação\n\nToda afirmação sobre regra, prazo, alíquota ou obrigação vem com a fonte em formato curto,\npor exemplo (*LC 214/2025, art. 12*). A ferramenta de site é fonte SECUNDÁRIA: pode dar\ncontexto, nunca vale como norma, e deve ser apresentada como \"interpretação de mercado\".\n\n## Números\n\nAlíquota, percentual, prazo e data só saem de citação literal do material consultado. Você\nnunca estima alíquota de cabeça nem projeta impacto no caso concreto: isso é trabalho do\nSimulador da Invent.\n\n## Escopo\n\nAssunto: Reforma Tributária do consumo e seus efeitos práticos (IBS, CBS, Imposto Seletivo,\ntransição, créditos, split payment, impacto em preço e caixa, ajustes em processo e sistema) e\ncomo as soluções da Invent endereçam esses pontos, quando perguntarem.\n\nFora disso, recuse em uma frase e reancore: \"Aqui eu só consigo ajudar com Reforma Tributária.\nSobre isso, o que você quer entender?\"\n\nNunca produza SQL, ABAP ou script executável.\n\n## Caso concreto\n\nVocê orienta, não emite parecer. Quando a resposta depende de CNAE, regime, estado, contrato\nou cadeia específica, explique o critério aplicável, diga o que muda a resposta e ofereça o\nespecialista. Não afirme o enquadramento de uma empresa específica.\n\n## Estilo (WhatsApp)\n\n- Português do Brasil, tom consultivo, direto, sem jargão desnecessário.\n- Blocos curtos, no máximo 4 parágrafos. Negrito com UM asterisco: *assim*. Nunca use ** nem\n  cabeçalho, tabela ou lista numerada longa.\n- Uma pergunta por vez. Se o assunto for grande, entregue o essencial e pergunte por onde a\n  pessoa quer seguir.\n\n## Primeira mensagem da conversa\n\nApresente-se em uma linha (\"Sou a IA da *Invent Software* especializada em *Reforma\nTributária*\") e avise: \"Minhas respostas são geradas por IA e podem conter erros, vale\nconfirmar com seu contador.\" Não repita esse aviso em toda mensagem; retome-o apenas quando a\nresposta trouxer número, prazo ou alíquota.\n\n## Simulador\n\nOfereça o Simulador da Reforma Tributária da Invent no máximo UMA vez por conversa, e só\nquando o tema envolver impacto financeiro, alíquota, crédito, preço ou planejamento. Pergunte\nantes: \"Quer que eu te mande um simulador que projeta esse impacto no seu cenário?\"\n\n- Se a pessoa aceitar, envie exatamente este link:\n  https://lp.inventsoftware.com.br/simulador-reforma-tributaria/?utm_source=ia+whatsapp+mkt&utm_campaign=simulador+da+reforma+tributaria\n- Se recusar, agradeça e não volte a oferecer.\n- Nunca envie o link duas vezes na mesma conversa nem em mensagens consecutivas.\n\n## Contato humano\n\nSe a pessoa pedir proposta, cotação, demonstração ou análise do caso dela, confirme que o time\nda Invent vai retornar e peça o melhor horário. Não prometa prazo que você não conhece.",
+          "maxIterations": 8
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        768,
+        -32
+      ],
+      "id": "74d97f74-2f5a-49a2-8737-59a2af016606",
+      "name": "3 - Agente Reforma Tributária"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===========================================================================\n// 4 - Normalizar Saída\n// Achados tratados: B4 (mensagem vazia enviada ao cliente) e B5 (regex gulosa\n// + remoção de tudo após \"//\", que corrompia respostas com URL).\n// Não há mais parsing de JSON: a saída do agente é texto e ponto.\n// ===========================================================================\n\nconst origem = $('1 - Validar e Normalizar').item.json;\nconst bruto = $input.item.json.output;\n\nlet texto = '';\nif (typeof bruto === 'string') {\n  texto = bruto;\n} else if (bruto && typeof bruto.text === 'string') {\n  texto = bruto.text;\n} else if (bruto != null) {\n  texto = String(bruto);\n}\n\ntexto = texto.trim();\n\n// O WhatsApp não entende ** do markdown: converte para o asterisco único.\ntexto = texto.replace(/\\*\\*/g, '*');\n\nif (!texto) {\n  texto = 'Tive um problema para gerar a resposta agora. Pode reenviar sua pergunta em outras palavras?';\n}\n\nreturn [{\n  json: {\n    numero: origem.numero,\n    instancia: origem.instancia,\n    message: texto,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        -32
+      ],
+      "id": "563b73b2-41ed-445d-8322-d8b41b0ed260",
+      "name": "4 - Normalizar Saída"
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "={{ $json.instancia }}",
+        "remoteJid": "={{ $json.numero }}",
+        "messageText": "={{ $json.message }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        80
+      ],
+      "id": "9b707f06-3c68-4f6c-ab62-aa7f9f999daf",
+      "name": "5 - Enviar Resposta",
+      "credentials": {
+        "evolutionApi": {
+          "id": "hmia0cWghRL4hclv",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        640,
+        240
+      ],
+      "id": "378c3109-8de0-451c-9199-45f3d428a6d4",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "b2ZKtjFntUpS8ehd",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=chat_history:{{ $('1 - Validar e Normalizar').item.json.numero }}",
+        "sessionTTL": 259200,
+        "contextWindowLength": 40
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryRedisChat",
+      "typeVersion": 1.5,
+      "position": [
+        800,
+        240
+      ],
+      "id": "fb14d3f6-2432-40c8-857a-027958e4be69",
+      "name": "Redis Chat Memory",
+      "credentials": {
+        "redis": {
+          "id": "dHfF8L4b7OmbZVOk",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentURL": "https://docs.google.com/document/d/1eAOFM9z_SK3UwtMEbsCpdllEMauP0DlZO9AjjgBBZMk/edit?tab=t.0"
+      },
+      "type": "n8n-nodes-base.googleDocsTool",
+      "typeVersion": 2,
+      "position": [
+        960,
+        240
+      ],
+      "id": "c0deead0-8175-4c85-a574-0c777cd1abb0",
+      "name": "Get a document in Google Docs",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "QYd0b1Uf7S7jEmK9",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "FONTE SECUNDÁRIA (imprensa especializada). Use apenas para contexto de mercado, nunca como norma, e sempre apresente o conteúdo como interpretação de terceiros.",
+        "url": "https://www.contabeis.com.br/tudo-sobre/reforma-tributaria",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        240
+      ],
+      "id": "757bdc26-8221-4ff1-8ef8-9dee176bed64",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        240
+      ],
+      "id": "f6dfde87-82cf-464f-97de-7892e11cf97c",
+      "name": "Calculator"
+    },
+    {
+      "parameters": {
+        "options": {
+          "timezone": "America/Sao_Paulo"
+        }
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        240
+      ],
+      "id": "9a5611f7-7f60-4daa-a508-dd7f129a8f44",
+      "name": "Date & Time"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook3": {
+      "main": [
+        [
+          {
+            "node": "1 - Validar e Normalizar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1 - Validar e Normalizar": {
+      "main": [
+        [
+          {
+            "node": "2 - Tem Texto?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2 - Tem Texto?": {
+      "main": [
+        [
+          {
+            "node": "3 - Agente Reforma Tributária",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "2b - Pedir Texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3 - Agente Reforma Tributária": {
+      "main": [
+        [
+          {
+            "node": "4 - Normalizar Saída",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4 - Normalizar Saída": {
+      "main": [
+        [
+          {
+            "node": "5 - Enviar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2b - Pedir Texto": {
+      "main": [
+        [
+          {
+            "node": "5 - Enviar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "3 - Agente Reforma Tributária",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "3 - Agente Reforma Tributária",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a document in Google Docs": {
+      "ai_tool": [
+        [
+          {
+            "node": "3 - Agente Reforma Tributária",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "ai_tool": [
+        [
+          {
+            "node": "3 - Agente Reforma Tributária",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "3 - Agente Reforma Tributária",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "3 - Agente Reforma Tributária",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "42dc573cbd37366eaced404237f94ca89202be2591456f155abc305947067cc2"
+  },
+  "tags": [
+    {
+      "updatedAt": "2025-10-29T13:05:34.036Z",
+      "createdAt": "2025-10-29T13:05:34.036Z",
+      "id": "BVaQZdjotEnbTeEa",
+      "name": "invent"
+    }
+  ]
+}
