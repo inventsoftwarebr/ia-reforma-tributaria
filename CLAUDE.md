@@ -9,9 +9,9 @@ Agente de WhatsApp da **Invent Software** que responde dúvidas sobre a Reforma 
 (EC 132/2023, LC 214/2025 e normas subsequentes) e converte interesse em lead qualificado / uso do
 Simulador da Reforma Tributária.
 
-Stack: Next.js 15 App Router + TypeScript strict + Tailwind + shadcn/ui + Drizzle ORM +
-Supabase (Postgres/Auth/pgvector) + Evolution API (gateway WhatsApp, VPS/EasyPanel) +
-Vercel AI SDK + QStash (fila/debounce) + HubSpot + Sentry. Hospedagem Vercel.
+Stack: Next.js 16 App Router + TypeScript strict + Drizzle ORM + Supabase (Postgres/pgvector) +
+Evolution API (gateway WhatsApp, VPS/EasyPanel) + Vercel AI SDK 7 + QStash (fila/debounce) +
+HubSpot + Sentry. Hospedagem Vercel. Tailwind e shadcn/ui entram com o console admin (fase 3).
 
 Desenho completo em `docs/arquitetura.md`. Prompt em `docs/prompt-v2.md`.
 
@@ -65,8 +65,14 @@ Tipo sem texto aproveitável recebe resposta pedindo texto — nunca chega vazio
 
 ### 7. Debounce antes de responder
 
-Mensagens do mesmo contato dentro de `TURN_DEBOUNCE_SECONDS` viram **um** turno. Lock por conversa
-(`FOR UPDATE SKIP LOCKED`) impede dois workers respondendo em paralelo.
+Mensagens do mesmo contato dentro de `TURN_DEBOUNCE_SECONDS` viram **um** turno, via
+`deduplicationId` do QStash. `claimPendingMessages` usa `FOR UPDATE SKIP LOCKED` e marca
+`processed_at` na mesma transação, então dois workers não respondem a mesma coisa.
+
+Sem `QSTASH_TOKEN`, `enqueueTurn` roda o turno inline — serve para desenvolvimento, nunca para
+produção (o webhook precisa responder em menos de 300ms).
+
+Conversa em `handoff` consome o pendente e fica calada: humano assumiu.
 
 ### 8. Silêncio nunca é resultado aceitável
 
@@ -144,8 +150,11 @@ legacy/                     fluxo n8n original + hotfix + ferramentas
 ## Antes de commitar
 
 ```bash
-pnpm typecheck && pnpm lint && pnpm test
+pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
+
+`pnpm lint` é `eslint .` — o `next lint` foi removido no Next 16. O CI roda os quatro mais a
+verificação de migration em dia.
 
 ## Armadilhas
 

@@ -1,5 +1,10 @@
 # Fase 1 — paridade correta em código
 
+> **Status: implementada.** O que está em código e verificado (`pnpm typecheck && pnpm lint &&
+pnpm test && pnpm build`, 70 testes) está marcado abaixo. Falta o que depende de ambiente real:
+> aplicar as migrations num projeto Supabase, ligar QStash e apontar a instância de teste da
+> Evolution para o novo webhook.
+
 Objetivo: o bot novo rodando em **número de teste**, com o comportamento do n8n corrigido, tudo
 persistido e observável. Sem RAG ainda (fase 2): a resposta usa a base de conhecimento provisória
 e já recusa quando não tem respaldo.
@@ -10,59 +15,83 @@ os tipos, sem resposta duplicada, sem resposta vazia e com tudo gravado em banco
 ## Entregas
 
 ### 1. Bootstrap
-- `package.json` (Next 15, TS strict, Drizzle, postgres-js, zod, ai, vitest, eslint, prettier)
-- `tsconfig.json`, `.eslintrc.json`, `.prettierrc.json`, `next.config.ts`, `vitest.config.ts`
-- `.github/workflows/ci.yml` — typecheck + lint + test + drizzle migration check
-- `drizzle.config.ts` usando `DIRECT_URL`
+
+- [x] `package.json` (Next 16, TS strict, Drizzle, postgres-js, zod, AI SDK 7, vitest, eslint)
+- [x] `tsconfig.json`, `eslint.config.mjs` (flat config — `next lint` saiu no Next 16),
+      `.prettierrc.json`, `next.config.ts`, `vitest.config.mts`
+- [x] `.github/workflows/ci.yml` — typecheck + lint + test + migration em dia + build
+- [x] `drizzle.config.ts` usando `DIRECT_URL`
 
 ### 2. Banco
-- `db/schema.ts` — `contacts`, `conversations`, `messages`, `conversation_state`, `ai_runs`,
-  `usage_counters`, `job_failures`, `hubspot_outbox` (tabelas de KB ficam na fase 2)
-- `db/rls.sql` — RLS forçado em todas, helpers `is_admin()` / `is_agent()`, default deny
-- `db/client.ts` — postgres-js `max: 1`, `prepare: false`, lazy
-- `db/migrations/` — primeira migration gerada
-- índice único em `(provider, provider_message_id)` de `messages` — base da idempotência
+
+- [x] `db/schema.ts` — `contacts`, `conversations`, `messages`, `conversation_state`, `ai_runs`,
+      `usage_counters`, `job_failures`, `hubspot_outbox` (tabelas de KB ficam na fase 2)
+- [x] `db/rls.sql` — RLS habilitado e forçado em todas, helpers `is_admin()` / `is_agent()`,
+      default deny, função de anonimização para retenção
+- [x] `db/client.ts` — postgres-js `max: 1`, `prepare: false`, lazy
+- [x] `db/migrations/0000_*.sql` + `db/migrate.ts` + `db/apply-rls.ts`
+- [x] unique em `(provider, provider_message_id)` de `messages` — base da idempotência
 
 ### 3. Gateway WhatsApp (`lib/whatsapp/`)
-- `types.ts` — `InboundMessage` normalizada, `OutboundMessage`, erros do gateway
-- `gateway.ts` — porta: `verifyInbound`, `parseInbound`, `sendText`, `setPresence`
-- `evolution.ts` — implementação Evolution API
-- `cloud-api.ts` — stub tipado, para não travar a migração futura
-- `normalize.ts` — **a parte mais importante**: todos os tipos de mensagem (CLAUDE.md §6).
-  Porta o código já testado em `legacy/tools/test-hotfix.mjs` para TypeScript, com os mesmos casos
-  em Vitest.
+
+- [x] `types.ts` — `InboundMessage`, `ParseResult`, motivos de descarte, contrato do gateway
+- [x] `gateway.ts` — porta: `verifyInbound`, `parseInbound`, `sendText`, `setTyping`
+- [x] `evolution.ts` — Evolution API, token por header ou query, timeout e uma retentativa
+- [x] `cloud-api.ts` — porta tipada que falha explícito, para não travar a migração futura
+- [x] `normalize.ts` — todos os tipos de mensagem, envelopes efêmero/visualização única,
+      filtros de grupo, broadcast e JID malformado (CLAUDE.md §6)
+- [x] `split.ts` — quebra em blocos e conversão de `**negrito**` para o formato do WhatsApp
+- [x] 46 testes em `normalize.test.ts` (33) e `split.test.ts` (13), portados de
+      `legacy/tools/test-hotfix.mjs` e ampliados
 
 ### 4. Inbound (`app/api/whatsapp/inbound/route.ts`)
-- `runtime = "nodejs"`
-- valida segredo + instância, rejeita `fromMe` / grupo / broadcast / JID inválido
-- upsert de `contacts` e `conversations`, insert idempotente em `messages`
-- respeita `opt_out_at` e rate limit antes de enfileirar
-- publica job com delay de debounce; responde 200 sempre, em < 300ms
-- testes: payload de cada tipo, reentrega do mesmo `provider_message_id`, token inválido, grupo
 
-### 5. Fila (`lib/queue/`)
-- `publish.ts` / `verify.ts` (assinatura QStash)
-- debounce por conversa: job com delay, worker agrega o que chegou na janela
+- [x] `runtime = "nodejs"`
+- [x] valida segredo + instância, rejeita `fromMe` / grupo / broadcast / JID inválido
+- [x] upsert de `contacts` e `conversations`, insert idempotente em `messages`
+- [x] respeita `opt_out_at` e rate limit (avisa uma vez ao cruzar o limite)
+- [x] publica job com delay de debounce; 200 em todo descarte para não gerar reentrega
+- [ ] testes de rota ponta a ponta (exige stub do banco) — a lógica de parsing já tem cobertura
 
-### 6. Worker do turno (`app/api/jobs/turn/route.ts`)
-- verifica assinatura da fila; `maxDuration` compatível com o plano da Vercel
-- lock por conversa (`FOR UPDATE SKIP LOCKED`); agrega mensagens não processadas em um turno
-- presence "composing" no gateway
-- chama o agente (`lib/ai/agent.ts`) com o prompt da fase 1
-- grava `ai_runs` (modelo, tokens, custo, latência, refusal)
-- envia resposta em blocos < 1000 caracteres, com retry
-- em falha final: mensagem de fallback ao usuário + `job_failures` + Sentry
+### 5. Fila (`lib/queue/turn.ts`)
+
+- [x] `enqueueTurn` com delay de debounce e `deduplicationId` por conversa/janela
+- [x] `verifyQueueRequest` com assinatura do QStash; sem chaves, nada entra
+- [x] modo inline sem `QSTASH_TOKEN` para desenvolvimento, com aviso no log
+
+### 6. Worker do turno (`app/api/jobs/turn/route.ts` + `lib/turn/run.ts`)
+
+- [x] verifica assinatura da fila; `maxDuration = 60`
+- [x] `claimPendingMessages` com `FOR UPDATE SKIP LOCKED` + `processed_at` na mesma transação
+- [x] agrega as mensagens pendentes em UM turno
+- [x] conversa em `handoff` ou contato com opt-out: consome o pendente e fica calado
+- [x] opt-out por palavra-chave antes de qualquer chamada de modelo
+- [x] mídia sem texto recebe o pedido de texto sem gastar chamada de modelo
+- [x] presence "composing" antes de responder
+- [x] grava `ai_runs` (modelo, versão do prompt, tokens, latência, refusal)
+- [x] envia em blocos com pausa entre eles; falha final → fallback ao usuário + `job_failures`
+- [ ] custo em dólar por run (`ai_runs.cost_usd` existe, o cálculo entra com a tabela de preços)
 
 ### 7. Agente (`lib/ai/`)
-- `agent.ts` — AI SDK, provider por env, `maxSteps` limitado
-- `prompt.ts` — prompt da fase 1 (versão de `docs/prompt-v2.md` sem as tools de RAG)
-- `tools/cronograma.ts` — tabela versionada em `lib/tax/`, única origem de número
-- `guardrails.ts` — pós-validação: número sem citação, URL fora da allowlist, escopo
-- testes: escopo, recusa, formatação WhatsApp (nunca `**`), bloqueio de número sem respaldo
+
+- [x] `agent.ts` — AI SDK 7, provider por env, `stopWhen: stepCountIs(5)`, uma retentativa
+- [x] `prompt.ts` — prompt da fase 1 versionado (`PROMPT_VERSION`), estado do simulador vindo do
+      banco em vez de "marcador interno"
+- [x] `provider.ts` — Anthropic ou Google por env (decisão D3 sem travar a fase 1)
+- [x] `tools/cronograma.ts` — única origem de número, lendo `lib/tax/schedule.ts`
+- [x] `tools/simulador.ts` — entrega o link com UTM e registra oferta/aceite
+- [x] `tools/handoff.ts` — marca handoff e silencia o bot (HubSpot na fase 3)
+- [x] `guardrails.ts` + 18 testes — número sem respaldo cai na recusa, link fora da allowlist é
+      removido, opt-out reconhecido sem confundir com pergunta
+- [ ] `lib/tax/schedule.ts` precisa de **revisão do time fiscal**: `REVISAO_PENDENTE = true` faz a
+      tool devolver aviso de conteúdo não homologado
+- [ ] testes do agente com stub de modelo (escopo e recusa ponta a ponta)
 
 ### 8. Operação
-- `lib/observability/` — Sentry + métricas de custo e latência
-- `docs/runbook.md` — girar segredo, reprocessar `job_failures`, pausar o bot, rollback para o n8n
+
+- [x] `lib/observability/logger.ts` — porta única de log estruturado (Sentry na fase 3)
+- [x] `docs/runbook.md` — rodar local, girar segredo, pausar o bot, reprocessar `job_failures`,
+      investigar "o bot não respondeu", consultas de custo e volume
 
 ## Ordem sugerida
 
