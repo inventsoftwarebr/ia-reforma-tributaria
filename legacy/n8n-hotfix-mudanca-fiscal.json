@@ -4,7 +4,7 @@
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "ia-whatsappinvent",
+        "path": "ia-whatsappinvent-v2",
         "options": {}
       },
       "type": "n8n-nodes-base.webhook",
@@ -15,7 +15,7 @@
       ],
       "id": "eb024552-9a87-4876-885c-5bfb1196599d",
       "name": "Webhook3",
-      "webhookId": "df99fcd3-23ef-470f-8d95-726dc81e1bd6"
+      "webhookId": "f1e2d3c4-b5a6-4978-8a9b-0c1d2e3f4a5b"
     },
     {
       "parameters": {

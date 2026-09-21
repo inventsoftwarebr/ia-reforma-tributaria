@@ -31,14 +31,15 @@ jobs:
       - name: Testes
         run: pnpm test
 
-      # Garante que o schema Drizzle e as migrations não divergiram:
-      # se `generate` produzir arquivo novo, falta commitar a migration.
-      - name: Migrations em dia
+      # Garante que schema, migrations e bootstrap.sql não divergiram: se
+      # `generate` produzir arquivo novo, falta commitar a migration.
+      - name: Migrations e bootstrap em dia
         run: |
           pnpm db:generate
-          if [ -n "$(git status --porcelain db/migrations)" ]; then
-            echo "Schema alterado sem migration commitada:"
-            git status --porcelain db/migrations
+          pnpm db:bootstrap-sql
+          if [ -n "$(git status --porcelain db)" ]; then
+            echo "Schema alterado sem migration/bootstrap commitados:"
+            git status --porcelain db
             exit 1
           fi
 
@@ -52,3 +53,67 @@ jobs:
           EVOLUTION_WEBHOOK_SECRET: ci-secret-with-16-chars
           AI_MODEL: claude-sonnet-5
           SIMULATOR_URL: https://lp.inventsoftware.com.br/simulador-reforma-tributaria/
+
+  # Aplica o SQL de verdade num Postgres descartável: bootstrap.sql é o que
+  # alguém vai colar no SQL Editor do Supabase, então precisa rodar limpo.
+  banco:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ia_reforma_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGPASSWORD: ci
+      DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/ia_reforma_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Aplicar bootstrap.sql
+        run: psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -q -f db/bootstrap.sql
+
+      - name: Verificar estrutura, RLS e idempotência
+        run: psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f scripts/verify-bootstrap.sql
+
+      # Depois do bootstrap, migrate não pode reaplicar a migration.
+      - name: db:migrate é no-op
+        run: pnpm db:migrate
+
+      - name: db:rls é idempotente
+        run: pnpm db:rls
+
+      - name: Verificar de novo
+        run: psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f scripts/verify-bootstrap.sql
+
+      # Rodar bootstrap.sql duas vezes tem que abortar com mensagem clara,
+      # não corromper o banco.
+      - name: bootstrap.sql roda só uma vez
+        run: |
+          if psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -q -f db/bootstrap.sql 2>/tmp/err; then
+            echo "bootstrap.sql rodou duas vezes sem abortar"
+            exit 1
+          fi
+          grep -q "já inicializado" /tmp/err || { cat /tmp/err; exit 1; }

@@ -141,4 +141,21 @@ begin
   return affected;
 end $$;
 
-revoke all on function public.anonymize_old_messages(interval) from public, anon, authenticated;
+revoke all on function public.anonymize_old_messages(interval) from public;
+
+-- anon e authenticated existem no Supabase, mas não num Postgres qualquer
+-- (banco local, CI): revoga só o que existe, para o arquivo rodar em qualquer um.
+do $$
+declare
+  role_name text;
+begin
+  foreach role_name in array array['anon', 'authenticated']
+  loop
+    if exists (select 1 from pg_roles where rolname = role_name) then
+      execute format(
+        'revoke all on function public.anonymize_old_messages(interval) from %I',
+        role_name
+      );
+    end if;
+  end loop;
+end $$;

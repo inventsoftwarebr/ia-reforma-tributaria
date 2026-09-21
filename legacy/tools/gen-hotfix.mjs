@@ -250,13 +250,17 @@ da Invent vai retornar e peça o melhor horário. Não prometa prazo que você n
 const nodes = [];
 
 nodes.push({
-  parameters: { httpMethod: "POST", path: "ia-whatsappinvent", options: {} },
+  // Path diferente do fluxo antigo de propósito: no n8n dois workflows ativos
+  // não podem dividir o mesmo path. Assim o hotfix pode ser ativado e testado
+  // com o atual ainda no ar, e a virada é só trocar a URL na Evolution
+  // (rollback = apontar de volta).
+  parameters: { httpMethod: "POST", path: "ia-whatsappinvent-v2", options: {} },
   type: "n8n-nodes-base.webhook",
   typeVersion: 2,
   position: [0, 0],
   id: byName["Webhook3"].id,
   name: "Webhook3",
-  webhookId: byName["Webhook3"].webhookId,
+  webhookId: "f1e2d3c4-b5a6-4978-8a9b-0c1d2e3f4a5b",
 });
 
 nodes.push({

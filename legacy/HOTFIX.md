@@ -26,6 +26,13 @@ migração. `n8n-mudanca-fiscal.json` é o original, congelado para referência.
 deduplicação por `provider_message_id` (B7), debounce de mensagens em sequência (B8), pausa do bot
 no handoff humano (B9), rate limit (S4), persistência, captura de lead e LGPD.
 
+## Convivência com o fluxo atual
+
+O hotfix usa o path `ia-whatsappinvent-v2`, diferente do `ia-whatsappinvent` do fluxo antigo.
+Isso é de propósito: o n8n não deixa dois workflows **ativos** dividirem o mesmo path. Com paths
+diferentes você ativa e testa o hotfix com o atual ainda no ar, e a virada é só trocar a URL do
+webhook na Evolution — o rollback é apontar de volta.
+
 ## Como aplicar
 
 1. **Backup:** no n8n, duplique o workflow atual antes de qualquer coisa.
@@ -42,21 +49,31 @@ no handoff humano (B9), rate limit (S4), persistência, captura de lead e LGPD.
 
    Gere o segredo com `openssl rand -hex 32`. **Enquanto `EXPECTED_TOKEN` estiver vazio a checagem
    é ignorada** — isso é intencional, para a importação não derrubar o bot antes do passo 5.
-5. **Configurar o Evolution** para chamar o webhook com o segredo. O caminho mais simples é
-   acrescentar a query string na URL do webhook da instância:
+5. **Ativar o hotfix.** Com path diferente, ele pode ficar ativo junto com o antigo. A URL de
+   produção do webhook só funciona com o workflow ativo — no n8n, `/webhook/...` exige ativo,
+   `/webhook-test/...` é o de teste manual.
+6. **Testar sem tocar na Evolution**, chamando a URL de produção direto. Use **o seu próprio
+   número** no `remoteJid`, porque é para ele que a resposta vai:
 
-   ```
-   https://<seu-n8n>/webhook/ia-whatsappinvent?token=<segredo>
+   ```bash
+   curl -X POST "https://<seu-n8n>/webhook/ia-whatsappinvent-v2?token=<segredo>" \
+     -H 'content-type: application/json' \
+     -d '{"instance":"<sua-instancia>","data":{
+           "key":{"remoteJid":"55SEUNUMERO@s.whatsapp.net","id":"TESTE-1","fromMe":false},
+           "pushName":"Teste","message":{"conversation":"O que muda em 2026?"}}}'
    ```
 
-   Se sua versão do Evolution permitir headers customizados no webhook, prefira
-   `x-invent-token: <segredo>` — as duas formas são aceitas.
-6. **Testar com o workflow ainda desativado**, usando *Execute Workflow* e um payload real de
-   webhook (pegue um da aba Executions do fluxo antigo). Confira: texto responde, áudio recebe o
-   pedido de texto, mensagem de grupo não gera resposta, requisição sem token não passa.
-7. **Virar a chave:** desative o workflow antigo e ative o hotfix. Mantenha o antigo por alguns
-   dias como rollback.
-8. **Verificar no WhatsApp real:** mande um texto, um áudio e um link pelo número de teste.
+   Confira, nesta ordem: sem `?token=` nada acontece; com token errado nada acontece; com token
+   certo chega resposta no seu WhatsApp; trocando `conversation` por
+   `"audioMessage":{"seconds":5}` você recebe o pedido de texto; trocando o `remoteJid` por um
+   `@g.us` nada acontece.
+7. **Virar a chave:** na Evolution, mude a URL do webhook da instância para
+   `https://<seu-n8n>/webhook/ia-whatsappinvent-v2?token=<segredo>`, mantendo o evento
+   `MESSAGES_UPSERT`. Se a sua versão aceitar header customizado, pode usar
+   `x-invent-token: <segredo>` em vez da query — as duas formas são aceitas.
+8. **Acompanhar.** Mande um texto, um áudio e uma mensagem com link pelo WhatsApp real e olhe a
+   aba *Executions* do hotfix. Deixe o fluxo antigo ativo por alguns dias: o rollback é apontar a
+   URL do webhook de volta para `ia-whatsappinvent`.
 
 ## Reproduzindo e testando as mudanças
 

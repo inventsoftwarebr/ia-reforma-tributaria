@@ -21,6 +21,7 @@ QStash ligado, instância de teste da Evolution apontando para `/api/whatsapp/in
 | [`docs/arquitetura.md`](docs/arquitetura.md) | stack, fluxo alvo, schema, RAG, guard-rails, env vars, fases, riscos |
 | [`docs/prompt-v2.md`](docs/prompt-v2.md) | system prompt reescrito, ferramentas e pós-validação |
 | [`docs/fase-1.md`](docs/fase-1.md) | primeira entrega em código, com o que está pronto e o que falta |
+| [`docs/passo-a-passo.md`](docs/passo-a-passo.md) | **comece aqui** — o que precisa ser feito, parte por parte |
 | [`docs/runbook.md`](docs/runbook.md) | rodar local, girar segredo, pausar o bot, investigar falha |
 | [`legacy/HOTFIX.md`](legacy/HOTFIX.md) | correção imediata para aplicar no n8n hoje |
 | [`CLAUDE.md`](CLAUDE.md) | regras invioláveis do projeto |
