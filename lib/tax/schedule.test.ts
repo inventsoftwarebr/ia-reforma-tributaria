@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PHASES, currentPhase, phasesForYear } from "./schedule";
-import { brazilDay } from "@/lib/conversations/repository";
+import { brazilDay } from "@/lib/time";
 
 describe("cronograma", () => {
   it("fases estão em ordem crescente de ano", () => {

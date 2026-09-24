@@ -1,7 +1,6 @@
 # Markdown é escrito à mão: o prettier enche as tabelas de espaço e o diff fica ilegível.
 *.md
-# Export do n8n e ferramentas do hotfix ficam como estão, para o gerador reproduzir byte a byte.
-legacy/
 db/migrations/
+db/bootstrap.sql
 pnpm-lock.yaml
 .next/

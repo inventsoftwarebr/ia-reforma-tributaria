@@ -1,35 +1,31 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { simulatorLink } from "@/lib/env";
 import {
   registerSimulatorAccepted,
+  registerSimulatorDeclined,
   registerSimulatorOffer,
 } from "@/lib/conversations/repository";
+import { simulatorLink } from "@/lib/env";
 
 /**
- * Entrega o link do simulador e registra a oferta no banco. O modelo não
- * escreve a URL: assim a UTM de campanha fica em configuração, não no prompt
- * (achado P5), e a aceitação virá medida.
+ * Entrega o link do simulador e registra no banco. O modelo não escreve a URL:
+ * a UTM de campanha fica em configuração e a aceitação vira métrica.
  */
 export function buildSimuladorTool(conversationId: string) {
   return tool({
     description:
-      "Envia o link do Simulador da Reforma Tributária da Invent. Chame APENAS depois de a pessoa aceitar a oferta. Devolve o link já com a campanha; use o link exatamente como veio.",
+      "Envia o link do Simulador da Reforma Tributária da Invent. Chame APENAS depois de a pessoa aceitar. Devolve o link já com a campanha; use exatamente como veio. Se a pessoa recusou, chame com aceitou=false para registrar e não oferecer de novo.",
     inputSchema: z.object({
-      confirmedByUser: z
-        .boolean()
-        .describe("true somente se a pessoa aceitou receber o simulador nesta conversa."),
+      aceitou: z.boolean().describe("true se a pessoa aceitou receber o simulador."),
     }),
-    execute: async ({ confirmedByUser }) => {
-      if (!confirmedByUser) {
-        return {
-          sent: false,
-          reason: "Pergunte antes se a pessoa quer conhecer o simulador.",
-        };
+    execute: async ({ aceitou }) => {
+      if (!aceitou) {
+        await registerSimulatorDeclined(conversationId);
+        return { enviado: false, motivo: "Recusa registrada: não ofereça novamente." };
       }
       await registerSimulatorOffer(conversationId);
       await registerSimulatorAccepted(conversationId);
-      return { sent: true, url: simulatorLink() };
+      return { enviado: true, url: simulatorLink() };
     },
   });
 }

@@ -31,9 +31,9 @@ jobs:
       - name: Testes
         run: pnpm test
 
-      # Garante que schema, migrations e bootstrap.sql não divergiram: se
-      # `generate` produzir arquivo novo, falta commitar a migration.
-      - name: Migrations e bootstrap em dia
+      # Se `generate` produzir arquivo novo, falta commitar a migration ou
+      # regenerar o bootstrap.
+      - name: Migration e bootstrap em dia
         run: |
           pnpm db:generate
           pnpm db:bootstrap-sql
@@ -47,6 +47,9 @@ jobs:
         run: pnpm build
         env:
           APP_URL: http://localhost:3000
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci
+          SUPABASE_SERVICE_ROLE_KEY: ci
           EVOLUTION_API_URL: http://localhost:8080
           EVOLUTION_API_KEY: ci
           EVOLUTION_INSTANCE: ci
@@ -54,18 +57,18 @@ jobs:
           AI_MODEL: claude-sonnet-5
           SIMULATOR_URL: https://lp.inventsoftware.com.br/simulador-reforma-tributaria/
 
-  # Aplica o SQL de verdade num Postgres descartável: bootstrap.sql é o que
-  # alguém vai colar no SQL Editor do Supabase, então precisa rodar limpo.
+  # Aplica o SQL de verdade: bootstrap.sql é o que alguém cola no SQL Editor
+  # do Supabase, então precisa rodar limpo num banco novo.
   banco:
     runs-on: ubuntu-latest
 
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: ci
-          POSTGRES_DB: ia_reforma_test
+          POSTGRES_DB: ia_test
         ports:
           - 5432:5432
         options: >-
@@ -76,7 +79,7 @@ jobs:
 
     env:
       PGPASSWORD: ci
-      DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/ia_reforma_test
+      DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/ia_test
 
     steps:
       - uses: actions/checkout@v4
@@ -95,21 +98,18 @@ jobs:
       - name: Aplicar bootstrap.sql
         run: psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -q -f db/bootstrap.sql
 
-      - name: Verificar estrutura, RLS e idempotência
+      - name: Verificar estrutura, RLS, idempotência e busca na base
         run: psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f scripts/verify-bootstrap.sql
 
-      # Depois do bootstrap, migrate não pode reaplicar a migration.
-      - name: db:migrate é no-op
+      - name: db:migrate é no-op depois do bootstrap
         run: pnpm db:migrate
 
-      - name: db:rls é idempotente
-        run: pnpm db:rls
+      - name: db:sql é idempotente
+        run: pnpm db:sql
 
       - name: Verificar de novo
         run: psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f scripts/verify-bootstrap.sql
 
-      # Rodar bootstrap.sql duas vezes tem que abortar com mensagem clara,
-      # não corromper o banco.
       - name: bootstrap.sql roda só uma vez
         run: |
           if psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -q -f db/bootstrap.sql 2>/tmp/err; then

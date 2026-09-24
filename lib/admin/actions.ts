@@ -1,0 +1,107 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { eq } from "drizzle-orm";
+import { db } from "@/db/client";
+import { conversations, jobFailures, kbSources, promptVersions } from "@/db/schema";
+import { logInfo } from "@/lib/observability/logger";
+import { requireAdmin, requireAgent } from "./auth";
+
+/**
+ * Server Actions do console. Cada uma revalida o papel: o guard da página não
+ * protege a action, que é um endpoint próprio.
+ */
+
+/** Pausa o bot na conversa (humano assumiu) ou devolve o atendimento a ele. */
+export async function setConversationStatus(
+  conversationId: string,
+  status: "active" | "handoff" | "closed",
+): Promise<void> {
+  const user = await requireAgent();
+
+  await db
+    .update(conversations)
+    .set({
+      status,
+      assignedTo: status === "handoff" ? user.id : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(conversations.id, conversationId));
+
+  logInfo("admin.conversation_status", { conversationId, status, by: user.id });
+  revalidatePath(`/admin/conversas/${conversationId}`);
+  revalidatePath("/admin/conversas");
+}
+
+/** Ativa uma versão do prompt e desativa as outras da mesma chave. */
+export async function activatePromptVersion(id: string): Promise<void> {
+  const user = await requireAdmin();
+
+  await db.transaction(async (tx) => {
+    const [target] = await tx
+      .select({ key: promptVersions.key, version: promptVersions.version })
+      .from(promptVersions)
+      .where(eq(promptVersions.id, id))
+      .limit(1);
+
+    if (!target) throw new Error("versão de prompt não encontrada");
+
+    await tx
+      .update(promptVersions)
+      .set({ active: false })
+      .where(eq(promptVersions.key, target.key));
+
+    await tx.update(promptVersions).set({ active: true }).where(eq(promptVersions.id, id));
+
+    logInfo("admin.prompt_activated", {
+      key: target.key,
+      version: target.version,
+      by: user.id,
+    });
+  });
+
+  revalidatePath("/admin/prompt");
+}
+
+/** Arquiva uma fonte: sai do retrieval sem perder o histórico do que citou. */
+export async function setSourceStatus(
+  id: string,
+  status: "active" | "archived",
+): Promise<void> {
+  const user = await requireAdmin();
+
+  await db
+    .update(kbSources)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(kbSources.id, id));
+
+  logInfo("admin.source_status", { id, status, by: user.id });
+  revalidatePath("/admin/base");
+}
+
+/** Marca a fonte como revisada pelo time fiscal. */
+export async function markSourceReviewed(id: string, reviewer: string): Promise<void> {
+  const user = await requireAdmin();
+  const name = reviewer.trim();
+  if (!name) throw new Error("informe quem revisou");
+
+  await db
+    .update(kbSources)
+    .set({ reviewedBy: name, reviewedAt: new Date(), updatedAt: new Date() })
+    .where(eq(kbSources.id, id));
+
+  logInfo("admin.source_reviewed", { id, reviewer: name, by: user.id });
+  revalidatePath("/admin/base");
+}
+
+export async function resolveJobFailure(id: string): Promise<void> {
+  const user = await requireAdmin();
+
+  await db
+    .update(jobFailures)
+    .set({ resolvedAt: new Date() })
+    .where(eq(jobFailures.id, id));
+
+  logInfo("admin.failure_resolved", { id, by: user.id });
+  revalidatePath("/admin");
+}

@@ -1,0 +1,41 @@
+[
+  {
+    "slug": "ec-132-2023",
+    "title": "Emenda Constitucional 132/2023 — reforma da tributação sobre consumo",
+    "citationLabel": "EC 132/2023",
+    "kind": "emenda",
+    "authority": "oficial",
+    "shape": "legal",
+    "file": "ec-132-2023.md",
+    "url": "https://www.planalto.gov.br/ccivil_03/constituicao/emendas/emc/emc132.htm",
+    "publisher": "Congresso Nacional",
+    "effectiveFrom": "2023-12-20",
+    "version": "texto promulgado",
+    "reviewedBy": "PREENCHER: quem do time fiscal revisou"
+  },
+  {
+    "slug": "lc-214-2025",
+    "title": "Lei Complementar 214/2025 — IBS, CBS e Imposto Seletivo",
+    "citationLabel": "LC 214/2025",
+    "kind": "lei_complementar",
+    "authority": "oficial",
+    "shape": "legal",
+    "file": "lc-214-2025.md",
+    "url": "https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp214.htm",
+    "publisher": "Presidência da República",
+    "effectiveFrom": "2025-01-16",
+    "version": "PREENCHER: consolidada até dd/mm/aaaa",
+    "reviewedBy": "PREENCHER"
+  },
+  {
+    "slug": "faq-invent-reforma",
+    "title": "FAQ da Invent sobre a Reforma Tributária",
+    "citationLabel": "FAQ Invent",
+    "kind": "faq",
+    "authority": "invent",
+    "shape": "markdown",
+    "file": "faq-invent-reforma.md",
+    "publisher": "Invent Software",
+    "reviewedBy": "PREENCHER"
+  }
+]

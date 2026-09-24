@@ -13,13 +13,17 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx db/migrate.ts",
-    "db:rls": "tsx db/apply-rls.ts",
+    "db:sql": "tsx db/apply-sql.ts",
     "db:bootstrap-sql": "tsx scripts/build-bootstrap-sql.ts",
+    "kb:ingest": "tsx scripts/kb-ingest.ts",
     "format": "prettier --write ."
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.58",
     "@ai-sdk/google": "^4.0.76",
+    "@ai-sdk/openai": "^3.0.0",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.46.1",
     "@upstash/qstash": "^2.11.3",
     "ai": "^7.0.107",
     "drizzle-orm": "^0.45.3",

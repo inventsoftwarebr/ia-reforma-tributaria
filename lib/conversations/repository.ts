@@ -5,15 +5,18 @@ import {
   contacts,
   conversationState,
   conversations,
+  hubspotOutbox,
   jobFailures,
   messages,
   usageCounters,
 } from "@/db/schema";
+import { brazilDay } from "@/lib/time";
 import type { InboundMessage, MessageKind } from "@/lib/whatsapp/types";
 
 /**
- * Acesso a dados da conversa. Toda a idempotência e o controle de concorrência
- * do pipeline vivem aqui. Ver CLAUDE.md §5 e §7.
+ * Acesso a dados do pipeline. Idempotência e controle de concorrência vivem
+ * aqui — é o que garante que reentrega de webhook não vire segunda resposta e
+ * que dois workers não respondam a mesma coisa.
  */
 
 export interface IngestResult {
@@ -25,23 +28,7 @@ export interface IngestResult {
   messagesToday: number;
 }
 
-/** Hoje em America/Sao_Paulo, para o contador diário bater com o dia do usuário. */
-export function brazilDay(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-}
-
-/**
- * Grava a mensagem recebida de forma idempotente e devolve o estado necessário
- * para decidir se o turno deve ser enfileirado.
- */
-export async function ingestInboundMessage(
-  inbound: InboundMessage,
-): Promise<IngestResult> {
+export async function ingestInboundMessage(inbound: InboundMessage): Promise<IngestResult> {
   return db.transaction(async (tx) => {
     const [contact] = await tx
       .insert(contacts)
@@ -50,13 +37,15 @@ export async function ingestInboundMessage(
         phoneE164: inbound.phoneE164,
         pushName: inbound.pushName,
         lastSeenAt: new Date(),
+        // Base legal do primeiro contato: a pessoa escreveu para um número
+        // publicado da Invent. O aviso de IA vai na primeira resposta.
+        consent: { canal: "whatsapp_inbound", registradoEm: new Date().toISOString() },
       })
       .onConflictDoUpdate({
         target: contacts.waJid,
         set: {
           lastSeenAt: new Date(),
           updatedAt: new Date(),
-          // pushName muda quando a pessoa troca o nome no WhatsApp.
           pushName: sql`coalesce(${inbound.pushName ?? null}, ${contacts.pushName})`,
         },
       })
@@ -64,19 +53,16 @@ export async function ingestInboundMessage(
 
     if (!contact) throw new Error("falha ao gravar contato");
 
-    const [openConversation] = await tx
+    const [open] = await tx
       .select({ id: conversations.id })
       .from(conversations)
       .where(
-        and(
-          eq(conversations.contactId, contact.id),
-          sql`${conversations.status} <> 'closed'`,
-        ),
+        and(eq(conversations.contactId, contact.id), not(eq(conversations.status, "closed"))),
       )
       .orderBy(desc(conversations.lastMessageAt))
       .limit(1);
 
-    let conversationId = openConversation?.id;
+    let conversationId = open?.id;
 
     if (!conversationId) {
       const [created] = await tx
@@ -96,7 +82,6 @@ export async function ingestInboundMessage(
         .where(eq(conversations.id, conversationId));
     }
 
-    // Idempotência: reentrega do mesmo evento não insere segunda linha.
     const inserted = await tx
       .insert(messages)
       .values({
@@ -112,9 +97,7 @@ export async function ingestInboundMessage(
         status: "received",
         createdAt: inbound.sentAt,
       })
-      .onConflictDoNothing({
-        target: [messages.provider, messages.providerMessageId],
-      })
+      .onConflictDoNothing({ target: [messages.provider, messages.providerMessageId] })
       .returning({ id: messages.id });
 
     const stored = inserted.length > 0;
@@ -126,10 +109,7 @@ export async function ingestInboundMessage(
         .values({ contactId: contact.id, day: brazilDay(), messages: 1 })
         .onConflictDoUpdate({
           target: [usageCounters.contactId, usageCounters.day],
-          set: {
-            messages: sql`${usageCounters.messages} + 1`,
-            updatedAt: new Date(),
-          },
+          set: { messages: sql`${usageCounters.messages} + 1`, updatedAt: new Date() },
         })
         .returning({ messages: usageCounters.messages });
       messagesToday = counter?.messages ?? 0;
@@ -153,13 +133,10 @@ export interface PendingMessage {
 }
 
 /**
- * Pega as mensagens ainda não processadas da conversa e as marca como
- * processadas na mesma transação, com `for update skip locked` — dois workers
- * concorrentes não respondem a mesma coisa duas vezes. CLAUDE.md §7.
+ * Pega as mensagens pendentes e marca como processadas na mesma transação, com
+ * `for update skip locked`: dois workers concorrentes não respondem o mesmo.
  */
-export async function claimPendingMessages(
-  conversationId: string,
-): Promise<PendingMessage[]> {
+export async function claimPendingMessages(conversationId: string): Promise<PendingMessage[]> {
   return db.transaction(async (tx) => {
     const pending = await tx
       .select({
@@ -195,26 +172,16 @@ export async function claimPendingMessages(
   });
 }
 
-/** Histórico recente para dar contexto ao modelo, mais antigo primeiro. */
 export async function recentHistory(
   conversationId: string,
   options: { limit?: number; excludeIds?: string[] } = {},
 ): Promise<{ role: "user" | "assistant"; content: string }[]> {
   const { limit = 20, excludeIds = [] } = options;
-  const conditions = [
-    eq(messages.conversationId, conversationId),
-    sql`${messages.body} <> ''`,
-  ];
-  if (excludeIds.length > 0) {
-    conditions.push(not(inArray(messages.id, excludeIds)));
-  }
+  const conditions = [eq(messages.conversationId, conversationId), sql`${messages.body} <> ''`];
+  if (excludeIds.length > 0) conditions.push(not(inArray(messages.id, excludeIds)));
 
   const rows = await db
-    .select({
-      direction: messages.direction,
-      body: messages.body,
-      createdAt: messages.createdAt,
-    })
+    .select({ direction: messages.direction, body: messages.body })
     .from(messages)
     .where(and(...conditions))
     .orderBy(desc(messages.createdAt))
@@ -259,7 +226,10 @@ export async function recordAiRun(input: {
   inputTokens: number;
   outputTokens: number;
   latencyMs: number;
+  retrievedCount: number;
+  citedChunkIds: string[];
   refused: boolean;
+  refusalReason?: string | null;
   error?: string | null;
 }): Promise<void> {
   await db.insert(aiRuns).values({
@@ -270,7 +240,10 @@ export async function recordAiRun(input: {
     inputTokens: input.inputTokens,
     outputTokens: input.outputTokens,
     latencyMs: input.latencyMs,
+    retrievedCount: input.retrievedCount,
+    citedChunkIds: input.citedChunkIds.length > 0 ? input.citedChunkIds : null,
     refused: input.refused,
+    refusalReason: input.refusalReason ?? null,
     error: input.error ?? null,
   });
 }
@@ -302,8 +275,8 @@ export async function conversationSnapshot(
       handoffRequestedAt: conversationState.handoffRequestedAt,
       outboundCount: sql<number>`(
         select count(*) from ${messages}
-        where ${messages.conversationId} = ${conversations.id}
-          and ${messages.direction} = 'outbound'
+         where ${messages.conversationId} = ${conversations.id}
+           and ${messages.direction} = 'outbound'
       )`,
     })
     .from(conversations)
@@ -352,17 +325,39 @@ export async function registerSimulatorAccepted(conversationId: string): Promise
     .where(eq(conversationState.conversationId, conversationId));
 }
 
-/**
- * Marca handoff e silencia o bot na conversa. O envio ao HubSpot entra na
- * fase 3 (outbox); o silenciamento não espera por ela, porque o pior resultado
- * é a pessoa pedir humano e o bot seguir respondendo sozinho. CLAUDE.md §7.
- */
-export async function registerHandoff(conversationId: string): Promise<void> {
+export async function registerSimulatorDeclined(conversationId: string): Promise<void> {
+  await db
+    .update(conversationState)
+    .set({ simulatorDeclinedAt: new Date(), updatedAt: new Date() })
+    .where(eq(conversationState.conversationId, conversationId));
+}
+
+export interface LeadSignals {
+  motivo?: string;
+  empresa?: string;
+  segmento?: string;
+  erp?: string;
+}
+
+/** Marca handoff e silencia o bot na conversa. */
+export async function registerHandoff(
+  conversationId: string,
+  signals: LeadSignals = {},
+): Promise<void> {
+  const clean = Object.fromEntries(
+    Object.entries(signals).filter(([, value]) => value !== undefined && value !== ""),
+  );
+
   await db.transaction(async (tx) => {
     await tx
       .update(conversationState)
-      .set({ handoffRequestedAt: new Date(), updatedAt: new Date() })
+      .set({
+        handoffRequestedAt: new Date(),
+        leadSignals: sql`${conversationState.leadSignals} || ${JSON.stringify(clean)}::jsonb`,
+        updatedAt: new Date(),
+      })
       .where(eq(conversationState.conversationId, conversationId));
+
     await tx
       .update(conversations)
       .set({ status: "handoff", updatedAt: new Date() })
@@ -370,16 +365,28 @@ export async function registerHandoff(conversationId: string): Promise<void> {
   });
 }
 
-/** Fila morta: registra o que falhou para reprocessamento manual. */
+export async function enqueueHubspotEvent(input: {
+  conversationId: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  await db.insert(hubspotOutbox).values({
+    conversationId: input.conversationId,
+    eventType: input.eventType,
+    payload: input.payload,
+  });
+}
+
+/** Fila morta: registra o que falhou para investigação e reprocessamento. */
 export async function recordJobFailure(input: {
   kind: string;
-  payload: unknown;
+  payload: Record<string, unknown>;
   error: string;
   attempts?: number;
 }): Promise<void> {
   await db.insert(jobFailures).values({
     kind: input.kind,
-    payload: input.payload as never,
+    payload: input.payload,
     error: input.error,
     attempts: input.attempts ?? 1,
   });

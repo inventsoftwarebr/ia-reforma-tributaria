@@ -1,4 +1,8 @@
+CREATE TYPE "public"."app_role" AS ENUM('admin', 'agent');--> statement-breakpoint
 CREATE TYPE "public"."conversation_status" AS ENUM('active', 'idle', 'handoff', 'closed');--> statement-breakpoint
+CREATE TYPE "public"."kb_authority" AS ENUM('oficial', 'invent', 'secundaria');--> statement-breakpoint
+CREATE TYPE "public"."kb_kind" AS ENUM('emenda', 'lei_complementar', 'lei', 'instrucao_normativa', 'nota_tecnica', 'faq', 'material_invent', 'imprensa');--> statement-breakpoint
+CREATE TYPE "public"."kb_status" AS ENUM('active', 'archived');--> statement-breakpoint
 CREATE TYPE "public"."message_direction" AS ENUM('inbound', 'outbound');--> statement-breakpoint
 CREATE TYPE "public"."message_kind" AS ENUM('text', 'quoted_text', 'button', 'list', 'image', 'video', 'audio', 'document', 'sticker', 'location', 'unsupported');--> statement-breakpoint
 CREATE TYPE "public"."message_status" AS ENUM('received', 'queued', 'sent', 'failed');--> statement-breakpoint
@@ -13,8 +17,10 @@ CREATE TABLE "ai_runs" (
 	"output_tokens" integer DEFAULT 0 NOT NULL,
 	"cost_usd" numeric(12, 6) DEFAULT '0' NOT NULL,
 	"latency_ms" integer DEFAULT 0 NOT NULL,
-	"retrieved_chunk_ids" uuid[],
+	"cited_chunk_ids" uuid[],
+	"retrieved_count" integer DEFAULT 0 NOT NULL,
 	"refused" boolean DEFAULT false NOT NULL,
+	"refusal_reason" text,
 	"error" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -40,8 +46,9 @@ CREATE TABLE "conversation_state" (
 	"simulator_offer_count" integer DEFAULT 0 NOT NULL,
 	"simulator_accepted_at" timestamp with time zone,
 	"simulator_declined_at" timestamp with time zone,
-	"last_topic" text,
 	"handoff_requested_at" timestamp with time zone,
+	"last_topic" text,
+	"lead_signals" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"flags" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -60,6 +67,7 @@ CREATE TABLE "conversations" (
 --> statement-breakpoint
 CREATE TABLE "hubspot_outbox" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"conversation_id" uuid,
 	"event_type" text NOT NULL,
 	"payload" jsonb NOT NULL,
 	"status" "outbox_status" DEFAULT 'pending' NOT NULL,
@@ -79,6 +87,40 @@ CREATE TABLE "job_failures" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "kb_chunks" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"source_id" uuid NOT NULL,
+	"ord" integer NOT NULL,
+	"heading" text,
+	"content" text NOT NULL,
+	"tokens" integer DEFAULT 0 NOT NULL,
+	"embedding" vector(1536),
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "kb_chunks_source_ord_unique" UNIQUE("source_id","ord")
+);
+--> statement-breakpoint
+CREATE TABLE "kb_sources" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"slug" text NOT NULL,
+	"title" text NOT NULL,
+	"citation_label" text NOT NULL,
+	"kind" "kb_kind" NOT NULL,
+	"authority" "kb_authority" NOT NULL,
+	"url" text,
+	"publisher" text,
+	"effective_from" date,
+	"effective_to" date,
+	"version" text,
+	"checksum" text NOT NULL,
+	"status" "kb_status" DEFAULT 'active' NOT NULL,
+	"reviewed_by" text,
+	"reviewed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "kb_sources_slug_unique" UNIQUE("slug")
+);
+--> statement-breakpoint
 CREATE TABLE "messages" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"conversation_id" uuid NOT NULL,
@@ -96,6 +138,27 @@ CREATE TABLE "messages" (
 	CONSTRAINT "messages_provider_message_unique" UNIQUE("provider","provider_message_id")
 );
 --> statement-breakpoint
+CREATE TABLE "profiles" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"email" text,
+	"full_name" text,
+	"role" "app_role" DEFAULT 'agent' NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "prompt_versions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"key" text NOT NULL,
+	"version" text NOT NULL,
+	"content" text NOT NULL,
+	"active" boolean DEFAULT false NOT NULL,
+	"notes" text,
+	"created_by" uuid,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "prompt_versions_key_version_unique" UNIQUE("key","version")
+);
+--> statement-breakpoint
 CREATE TABLE "usage_counters" (
 	"contact_id" uuid NOT NULL,
 	"day" date NOT NULL,
@@ -110,14 +173,21 @@ ALTER TABLE "ai_runs" ADD CONSTRAINT "ai_runs_conversation_id_conversations_id_f
 ALTER TABLE "ai_runs" ADD CONSTRAINT "ai_runs_message_id_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."messages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "conversation_state" ADD CONSTRAINT "conversation_state_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "conversations" ADD CONSTRAINT "conversations_contact_id_contacts_id_fk" FOREIGN KEY ("contact_id") REFERENCES "public"."contacts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "conversations" ADD CONSTRAINT "conversations_assigned_to_profiles_id_fk" FOREIGN KEY ("assigned_to") REFERENCES "public"."profiles"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "hubspot_outbox" ADD CONSTRAINT "hubspot_outbox_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "kb_chunks" ADD CONSTRAINT "kb_chunks_source_id_kb_sources_id_fk" FOREIGN KEY ("source_id") REFERENCES "public"."kb_sources"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "messages" ADD CONSTRAINT "messages_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "messages" ADD CONSTRAINT "messages_contact_id_contacts_id_fk" FOREIGN KEY ("contact_id") REFERENCES "public"."contacts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "prompt_versions" ADD CONSTRAINT "prompt_versions_created_by_profiles_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "usage_counters" ADD CONSTRAINT "usage_counters_contact_id_contacts_id_fk" FOREIGN KEY ("contact_id") REFERENCES "public"."contacts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "ai_runs_conversation_idx" ON "ai_runs" USING btree ("conversation_id","created_at");--> statement-breakpoint
+CREATE INDEX "ai_runs_created_idx" ON "ai_runs" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "contacts_phone_idx" ON "contacts" USING btree ("phone_e164");--> statement-breakpoint
 CREATE INDEX "conversations_contact_idx" ON "conversations" USING btree ("contact_id");--> statement-breakpoint
 CREATE INDEX "conversations_status_idx" ON "conversations" USING btree ("status","last_message_at");--> statement-breakpoint
 CREATE INDEX "hubspot_outbox_pending_idx" ON "hubspot_outbox" USING btree ("status","created_at");--> statement-breakpoint
 CREATE INDEX "job_failures_open_idx" ON "job_failures" USING btree ("resolved_at","created_at");--> statement-breakpoint
+CREATE INDEX "kb_chunks_source_idx" ON "kb_chunks" USING btree ("source_id");--> statement-breakpoint
+CREATE INDEX "kb_sources_status_idx" ON "kb_sources" USING btree ("status","authority");--> statement-breakpoint
 CREATE INDEX "messages_conversation_idx" ON "messages" USING btree ("conversation_id","created_at");--> statement-breakpoint
 CREATE INDEX "messages_pending_idx" ON "messages" USING btree ("conversation_id","processed_at");

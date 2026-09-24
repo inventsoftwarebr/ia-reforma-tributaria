@@ -2,13 +2,15 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 
 /**
- * Gera db/bootstrap.sql: um único arquivo para colar no SQL Editor do Supabase
- * e deixar o banco pronto, sem precisar de Node na máquina de quem aplica.
+ * Gera db/bootstrap.sql: um arquivo para colar no SQL Editor do Supabase e
+ * deixar o banco pronto, sem precisar de Node na máquina de quem aplica.
  *
- * Inclui a linha de controle do drizzle (schema `drizzle`, tabela
- * `__drizzle_migrations`) com o MESMO hash e timestamp que o `drizzle-kit`
- * usaria, para que `pnpm db:migrate` depois não tente reaplicar a migration.
- * O hash é sha256 do conteúdo do arquivo .sql — ver drizzle-orm/migrator.js.
+ * Ordem: extensões → migration → controle do drizzle → funções e índices →
+ * políticas de segurança.
+ *
+ * A linha de controle usa o MESMO hash e timestamp que o `drizzle-kit` usaria
+ * (sha256 do conteúdo do .sql — ver drizzle-orm/migrator.js), para que
+ * `pnpm db:migrate` depois não tente reaplicar a migration.
  *
  * Rode `pnpm db:bootstrap-sql` sempre que gerar uma migration nova.
  */
@@ -26,8 +28,8 @@ const parts: string[] = [
 -- bootstrap.sql — GERADO por scripts/build-bootstrap-sql.ts. Não edite à mão.
 --
 -- Como usar: Supabase → SQL Editor → New query → cole tudo → Run.
--- Rode UMA vez, num projeto novo. Depois disso, mudanças de schema vão por
--- migration (pnpm db:generate && pnpm db:migrate) e o RLS por pnpm db:rls.
+-- Rode UMA vez, num projeto novo. Depois disso, mudança de schema vai por
+-- migration (pnpm db:generate && pnpm db:migrate) e o resto por pnpm db:sql.
 -- =============================================================================
 
 -- Trava de segurança: aborta se o banco já tiver sido inicializado.
@@ -39,9 +41,14 @@ begin
   ) then
     raise exception 'Banco já inicializado. Use migrations para alterações incrementais.';
   end if;
-end $$;
+end $$;`,
 
--- Controle de migrations do drizzle.
+  `-- -----------------------------------------------------------------------------
+-- Extensões (db/extensions.sql)
+-- -----------------------------------------------------------------------------
+${readFileSync("db/extensions.sql", "utf8").trim()}`,
+
+  `-- Controle de migrations do drizzle.
 create schema if not exists "drizzle";
 create table if not exists "drizzle"."__drizzle_migrations" (
   id serial primary key,
@@ -51,8 +58,7 @@ create table if not exists "drizzle"."__drizzle_migrations" (
 ];
 
 for (const entry of journal.entries) {
-  const file = `db/migrations/${entry.tag}.sql`;
-  const query = readFileSync(file, "utf8");
+  const query = readFileSync(`db/migrations/${entry.tag}.sql`, "utf8");
   const hash = createHash("sha256").update(query).digest("hex");
 
   parts.push(`-- -----------------------------------------------------------------------------
@@ -64,13 +70,13 @@ insert into "drizzle"."__drizzle_migrations" ("hash", "created_at")
 values ('${hash}', ${entry.when});`);
 }
 
-parts.push(`-- -----------------------------------------------------------------------------
--- Políticas RLS (db/rls.sql) — idempotente, pode rodar de novo quando mudar.
+for (const file of ["functions.sql", "rls.sql"] as const) {
+  parts.push(`-- -----------------------------------------------------------------------------
+-- db/${file} — idempotente, roda de novo com pnpm db:sql
 -- -----------------------------------------------------------------------------
-${readFileSync("db/rls.sql", "utf8").trim()}`);
+${readFileSync(`db/${file}`, "utf8").trim()}`);
+}
 
 writeFileSync("db/bootstrap.sql", `${parts.join("\n\n")}\n`);
 
-process.stdout.write(
-  `db/bootstrap.sql gerado com ${journal.entries.length} migration(s).\n`,
-);
+process.stdout.write(`db/bootstrap.sql gerado com ${journal.entries.length} migration(s).\n`);

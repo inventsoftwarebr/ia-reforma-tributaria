@@ -112,13 +112,18 @@ export async function runTurn(input: { conversationId: string }): Promise<TurnOu
       inputTokens: answer.inputTokens,
       outputTokens: answer.outputTokens,
       latencyMs: answer.latencyMs,
+      retrievedCount: answer.retrievedCount,
+      citedChunkIds: answer.citedChunkIds,
       refused: answer.refused,
+      refusalReason: answer.refusalReason,
     });
 
     logInfo("turn.answered", {
       conversationId,
       blocks,
       refused: answer.refused,
+      refusalReason: answer.refusalReason,
+      retrieved: answer.retrievedCount,
       latencyMs: answer.latencyMs,
     });
 

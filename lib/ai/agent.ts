@@ -1,10 +1,19 @@
 import { generateText, stepCountIs } from "ai";
 import { serverEnv } from "@/lib/env";
+import { buildContextBlock, searchKb, type RetrievedChunk } from "@/lib/kb/search";
 import { logWarn } from "@/lib/observability/logger";
+import { brazilDate } from "@/lib/time";
 import { toWhatsAppFormatting } from "@/lib/whatsapp/split";
-import { applyGuardrails } from "./guardrails";
-import { PROMPT_VERSION, buildSystemPrompt, type PromptState } from "./prompt";
+import { PHASES } from "@/lib/tax/schedule";
+import {
+  applyGuardrails,
+  normalizeNormReference,
+  type RefusalReason,
+} from "./guardrails";
+import { buildSystemPrompt, type PromptState } from "./prompt";
+import { activePolicy } from "./prompt-store";
 import { modelLabel, resolveModel } from "./provider";
+import { buildBuscarBaseTool } from "./tools/buscar-base";
 import { cronogramaReforma } from "./tools/cronograma";
 import { buildHandoffTool } from "./tools/handoff";
 import { buildSimuladorTool } from "./tools/simulador";
@@ -13,30 +22,71 @@ export interface AgentInput {
   conversationId: string;
   question: string;
   history: { role: "user" | "assistant"; content: string }[];
-  state: PromptState;
+  state: Omit<PromptState, "today">;
 }
 
 export interface AgentResult {
   text: string;
   refused: boolean;
+  refusalReason: RefusalReason | null;
   model: string;
   promptVersion: string;
   inputTokens: number;
   outputTokens: number;
   latencyMs: number;
+  retrievedCount: number;
+  citedChunkIds: string[];
 }
 
 const SCHEDULE_TOOL = "cronograma_reforma";
+const RETRIES = 1;
 
 /**
- * Uma nova tentativa para erro transitório do provider (sobrecarga, timeout).
- * Mais que isso o usuário já percebe a demora; aí vale a mensagem de fallback.
+ * Consulta de busca: a pergunta sozinha não basta em follow-up ("e para
+ * serviços?"), então entram as últimas falas do usuário. Heurística barata; se
+ * não bastar, o agente tem a ferramenta `buscar_base` para refinar.
  */
-const RETRIES = 1;
+function buildSearchQuery(input: AgentInput): string {
+  const lastUserTurns = input.history
+    .filter((entry) => entry.role === "user")
+    .slice(-2)
+    .map((entry) => entry.content);
+
+  return [...lastUserTurns, input.question].join(" ").slice(0, 600);
+}
+
+/** Normas que a resposta pode citar: as recuperadas, mais as do cronograma. */
+function allowedNorms(chunks: RetrievedChunk[], usedScheduleTool: boolean): string[] {
+  const norms = new Set<string>();
+
+  for (const chunk of chunks) {
+    const normalized = normalizeNormReference(chunk.citationLabel);
+    if (normalized) norms.add(normalized);
+  }
+
+  if (usedScheduleTool) {
+    for (const phase of PHASES) {
+      const normalized = normalizeNormReference(phase.source);
+      if (normalized) norms.add(normalized);
+    }
+  }
+
+  return [...norms];
+}
 
 export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
   const env = serverEnv();
   const startedAt = Date.now();
+
+  const retrieved: RetrievedChunk[] = await searchKb(buildSearchQuery(input));
+  const collected: RetrievedChunk[] = [...retrieved];
+
+  const policy = await activePolicy();
+  const system = buildSystemPrompt({
+    policy: policy.content,
+    context: buildContextBlock(retrieved),
+    state: { ...input.state, today: brazilDate(new Date()) },
+  });
 
   let lastError: unknown;
 
@@ -44,22 +94,20 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
     try {
       const result = await generateText({
         model: resolveModel(),
-        system: buildSystemPrompt(input.state),
+        system,
         messages: [
-          ...input.history.map((entry) => ({
-            role: entry.role,
-            content: entry.content,
-          })),
+          ...input.history.map((entry) => ({ role: entry.role, content: entry.content })),
           { role: "user" as const, content: input.question },
         ],
         tools: {
+          buscar_base: buildBuscarBaseTool(collected),
           [SCHEDULE_TOOL]: cronogramaReforma,
           oferecer_simulador: buildSimuladorTool(input.conversationId),
           solicitar_contato_humano: buildHandoffTool(input.conversationId),
         },
-        stopWhen: stepCountIs(5),
+        stopWhen: stepCountIs(6),
         maxOutputTokens: env.AI_MAX_TOKENS_PER_TURN,
-        temperature: 0.3,
+        temperature: 0.2,
       });
 
       const usedScheduleTool = result.steps.some((step) =>
@@ -69,31 +117,44 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
       const verdict = applyGuardrails({
         text: toWhatsAppFormatting(result.text),
         usedScheduleTool,
+        availableNorms: allowedNorms(collected, usedScheduleTool),
       });
 
       if (!verdict.ok) {
         logWarn("agent.guardrail_blocked", {
           conversationId: input.conversationId,
           reason: verdict.reason,
+          citedNorms: verdict.citedNorms,
         });
       }
+
+      // Rastreia quais trechos sustentaram a resposta: recusa alta num tema é
+      // lacuna de curadoria, não defeito do modelo.
+      const citedChunkIds = verdict.ok
+        ? collected
+            .filter((chunk) => {
+              const normalized = normalizeNormReference(chunk.citationLabel);
+              return normalized !== null && verdict.citedNorms.includes(normalized);
+            })
+            .map((chunk) => chunk.chunkId)
+        : [];
 
       return {
         text: verdict.text,
         refused: !verdict.ok,
+        refusalReason: verdict.ok ? null : verdict.reason,
         model: modelLabel(),
-        promptVersion: PROMPT_VERSION,
+        promptVersion: policy.version,
         inputTokens: result.usage.inputTokens ?? 0,
         outputTokens: result.usage.outputTokens ?? 0,
         latencyMs: Date.now() - startedAt,
+        retrievedCount: collected.length,
+        citedChunkIds: [...new Set(citedChunkIds)],
       };
     } catch (error) {
       lastError = error;
       if (attempt < RETRIES) {
-        logWarn("agent.retrying", {
-          conversationId: input.conversationId,
-          attempt: attempt + 1,
-        });
+        logWarn("agent.retrying", { conversationId: input.conversationId, attempt: attempt + 1 });
         await new Promise((resolve) => setTimeout(resolve, 800));
       }
     }

@@ -1,128 +1,119 @@
 # CLAUDE.md — IA da Reforma Tributária (Invent Software)
 
-Lido por toda sessão Claude neste repositório. As regras abaixo vêm da auditoria do fluxo n8n
-original (`docs/auditoria-n8n.md`) — cada uma existe porque um bug real foi encontrado.
+Lido por toda sessão Claude neste repositório.
 
-## O que é este projeto
+## O que é
 
-Agente de WhatsApp da **Invent Software** que responde dúvidas sobre a Reforma Tributária
-(EC 132/2023, LC 214/2025 e normas subsequentes) e converte interesse em lead qualificado / uso do
-Simulador da Reforma Tributária.
+Agente de WhatsApp que responde dúvidas sobre a Reforma Tributária citando a norma, e converte
+interesse em lead qualificado / uso do Simulador da Reforma Tributária da Invent.
 
-Stack: Next.js 16 App Router + TypeScript strict + Drizzle ORM + Supabase (Postgres/pgvector) +
-Evolution API (gateway WhatsApp, VPS/EasyPanel) + Vercel AI SDK 7 + QStash (fila/debounce) +
-HubSpot + Sentry. Hospedagem Vercel. Tailwind e shadcn/ui entram com o console admin (fase 3).
+Stack: Next.js 16 App Router + TypeScript strict + Drizzle + Supabase (Postgres, pgvector, Auth)
++ Evolution API (gateway WhatsApp, VPS/EasyPanel) + Vercel AI SDK + QStash + HubSpot.
+Hospedagem Vercel.
 
-Desenho completo em `docs/arquitetura.md`. Prompt em `docs/prompt-v2.md`.
+Fluxo: `POST /api/whatsapp/inbound` grava e enfileira → `POST /api/jobs/turn` agrega o turno,
+busca na base, chama o modelo, valida e responde → `GET /api/cron/outbox` drena o HubSpot.
 
 ## Regras invioláveis
 
 ### 1. Nunca inventar matéria tributária
 
-Afirmação sobre regra, prazo, alíquota, crédito ou obrigação **só sai com respaldo** em chunk da
-base curada ou na tool `cronograma_reforma`. Sem respaldo, o agente recusa e oferece contato
-humano. Recusa é comportamento correto, não falha.
+Afirmação sobre regra, prazo, alíquota, crédito ou obrigação só sai com respaldo: trecho
+recuperado da base ou a tool `cronograma_reforma`. Sem respaldo, o agente recusa e oferece
+contato humano. **Recusa é comportamento correto, não falha** — e recusa alta num tema é sinal de
+lacuna de curadoria, visível no painel.
 
-O prompt do fluxo antigo mandava "nunca diga que não tem informação" — é exatamente o que este
-projeto não faz. Não reintroduza esse comportamento em nome de "parecer mais útil".
+### 2. Citação verificada, não apenas pedida
 
-### 2. Citação obrigatória
-
-Toda afirmação normativa carrega fonte + dispositivo (`LC 214/2025, art. 12`). A pós-validação
-bloqueia resposta com número/prazo sem citação e refaz. Fonte `secundaria` (imprensa) nunca é
-apresentada como norma.
+`lib/ai/guardrails.ts` extrai as normas citadas na resposta e compara com as que foram
+efetivamente recuperadas. Citação de norma que não veio da base é descartada como invenção —
+citação falsa é pior que resposta sem citação, porque parece confiável.
 
 ### 3. Número é código, não LLM
 
-Alíquota, percentual, fase e data vêm de `lib/tax/` (tabela versionada, revisada pelo time fiscal)
-ou de citação literal. O modelo não calcula alíquota. Simulação de caso concreto é do Simulador.
+Alíquota, percentual, fase e data vêm de `lib/tax/schedule.ts` (revisão fiscal pendente enquanto
+`REVISAO_PENDENTE = true`) ou de citação literal. O modelo não calcula alíquota. Simulação de caso
+concreto é do Simulador.
 
-### 4. Estado em Postgres, nunca no prompt
+### 4. Retrieval filtra por vigência
 
-Oferta do simulador, handoff, opt-out e rate limit são colunas em `conversation_state` /
-`contacts` / `usage_counters`. Não instrua o modelo a "manter um marcador interno" — LLM não tem
-estado entre turnos.
+`kb_search` (em `db/functions.sql`) descarta fonte fora da vigência na data da pergunta. Norma
+revogada não sustenta resposta. Toda fonte declara `authority`: `secundaria` (imprensa) é contexto,
+nunca norma.
 
-### 5. Webhook de entrada é hostil até prova em contrário
+### 5. Estado em Postgres, nunca no prompt
 
-`app/api/whatsapp/inbound` **sempre**:
+Oferta do simulador, handoff, opt-out e rate limit são colunas. Não instrua o modelo a "manter um
+marcador interno" — LLM não tem estado entre turnos.
 
-1. valida segredo (HMAC/token) e instância contra allowlist;
-2. rejeita `fromMe`, `@g.us`, `@broadcast`, `status@broadcast` e JID malformado;
-3. nunca confia no destinatário vindo do corpo — só envia para JID validado e persistido;
-4. `INSERT ... ON CONFLICT (provider, provider_message_id) DO NOTHING` antes de qualquer trabalho;
-5. responde 200 em < 300ms; trabalho pesado vai para a fila.
+### 6. Webhook de entrada é hostil até prova em contrário
 
-O fluxo antigo aceitava POST anônimo e usava o `remoteJid` do corpo como destinatário — qualquer
-um podia fazer o número oficial da Invent enviar mensagem para terceiros.
+`app/api/whatsapp/inbound` sempre: valida segredo e instância; rejeita `fromMe`, `@g.us`,
+`@broadcast` e JID malformado; nunca confia no destinatário vindo do corpo; grava com
+`ON CONFLICT DO NOTHING` por `(provider, provider_message_id)` antes de qualquer trabalho;
+responde 200 rápido e joga o resto para a fila.
 
-### 6. Toda mensagem do WhatsApp é normalizada
+### 7. Toda mensagem do WhatsApp é normalizada
 
-Trate `conversation`, `extendedTextMessage`, `imageMessage`/`videoMessage` (legenda),
-`buttonsResponseMessage`, `listResponseMessage`, `templateButtonReplyMessage`, `audioMessage`,
-`documentMessage`, `stickerMessage`, `locationMessage`, `reactionMessage` e `protocolMessage`.
-Tipo sem texto aproveitável recebe resposta pedindo texto — nunca chega vazio ao modelo.
+`lib/whatsapp/normalize.ts` trata texto, texto citado, botão, lista, legenda de imagem e vídeo,
+áudio, documento, sticker, localização, além dos envelopes efêmero e de visualização única. Tipo
+sem texto aproveitável recebe resposta pedindo texto — nada chega vazio ao modelo.
 
-### 7. Debounce antes de responder
+### 8. Debounce e lock antes de responder
 
-Mensagens do mesmo contato dentro de `TURN_DEBOUNCE_SECONDS` viram **um** turno, via
-`deduplicationId` do QStash. `claimPendingMessages` usa `FOR UPDATE SKIP LOCKED` e marca
-`processed_at` na mesma transação, então dois workers não respondem a mesma coisa.
+Mensagens do mesmo contato na janela de `TURN_DEBOUNCE_SECONDS` viram **um** turno
+(`deduplicationId` do QStash). `claimPendingMessages` usa `FOR UPDATE SKIP LOCKED` e marca
+`processed_at` na mesma transação. Conversa em `handoff` consome o pendente e fica calada.
 
-Sem `QSTASH_TOKEN`, `enqueueTurn` roda o turno inline — serve para desenvolvimento, nunca para
-produção (o webhook precisa responder em menos de 300ms).
+### 9. Silêncio nunca é resultado aceitável
 
-Conversa em `handoff` consome o pendente e fica calada: humano assumiu.
+Falha de modelo, fila, banco ou gateway → retry; em falha final, mensagem de fallback ao usuário,
+registro em `job_failures` e log de erro.
 
-### 8. Silêncio nunca é resultado aceitável
+### 10. Conexão Postgres — pooler na 6543
 
-Falha de LLM, fila, banco ou gateway → retry; em falha final, mensagem de fallback ao usuário,
-registro em `job_failures` e alerta Sentry.
+`DATABASE_URL` aponta para o Supavisor em transaction mode (6543), com `postgres-js`, `max: 1`,
+`prepare: false`. `DIRECT_URL` (5432) só para `drizzle-kit` e scripts.
 
-### 9. Conexão Postgres — Supavisor transaction mode (6543)
+### 11. RLS default-deny em todas as tabelas
 
-`DATABASE_URL` aponta para o pooler na porta **6543**. `DIRECT_URL` (5432) só para `drizzle-kit`.
-Drizzle com `postgres-js`, `max: 1`, `prepare: false`.
+Política explícita em `db/rls.sql` **no mesmo commit** que cria ou altera a tabela. O console lê
+pela conexão de serviço, que ignora RLS — por isso **toda página e toda Server Action chama
+`requireAgent()`/`requireAdmin()`**. O RLS é a segunda camada, para acesso direto à API do
+Supabase. Service role nunca vai para o navegador.
 
-### 10. RLS default-deny em todas as tabelas
+### 12. Runtime Node
 
-Política explícita em `db/rls.sql` **no mesmo commit** que cria/altera a tabela. Conversa e
-contato são dados pessoais: leitura só para `is_admin()` / `is_agent()`. Service role nunca vai
-para o browser.
+Nada de `runtime = "edge"` onde há Postgres, `postgres-js` ou AI SDK.
 
-### 11. Runtime Node
+### 13. Datas e timezone
 
-Nada de `runtime = "edge"` onde há Postgres, `postgres-js` ou SDK de IA. Ver limites de tempo de
-função na Vercel ao definir `maxDuration` do worker.
+`timestamptz` UTC no banco, render em `America/Sao_Paulo` (`lib/time.ts`), UI em `DD/MM/YYYY`.
 
-### 12. Datas e timezone
+### 14. LGPD não é opcional
 
-`timestamptz` UTC no banco, render em `America/Sao_Paulo`, UI em `DD/MM/YYYY`. O fluxo antigo usava
-`Europe/Lisbon` e informava a data errada — em um agente que fala de prazos, isso é resposta errada.
+Consentimento do primeiro contato registrado em `contacts.consent`; aviso de IA na primeira
+resposta; opt-out por palavra-chave ("sair", "parar", "cancelar") antes de qualquer chamada de
+modelo; `anonymize_old_messages()` para retenção.
 
-### 13. LGPD não é opcional
+### 15. Gateway WhatsApp é porta trocável
 
-Consentimento granular registrado antes de enviar lead ao HubSpot. Opt-out por palavra-chave
-("sair", "parar", "cancelar") → `opt_out_at` e fim do atendimento. Retenção definida, exportação e
-exclusão a pedido, disclosure de transferência internacional (provedores de IA).
+Todo acesso passa por `lib/whatsapp/gateway.ts`. Implementações em `evolution.ts` e
+`cloud-api.ts`. Nenhuma rota chama a Evolution direto.
 
-### 14. Gateway WhatsApp é porta trocável
+### 16. Prompt tem duas partes
 
-Todo acesso ao WhatsApp passa por `lib/whatsapp/gateway.ts`. Implementações em
-`lib/whatsapp/evolution.ts` e `lib/whatsapp/cloud-api.ts`. Nenhuma rota chama a Evolution direto.
-
-### 15. Prompt versionado
-
-Prompt vive em `prompt_versions` e é referenciado por `prompt_version` em `ai_runs`. Mudança de
-prompt é commit + registro, nunca edição direta em produção.
+**Política** (`lib/ai/prompt.ts` ou a versão ativa em `prompt_versions`): tom, escopo, regras —
+ajustável pelo console. **Contexto** (trechos e estado): montado sempre em código, para o console
+não conseguir afrouxar o que os guard-rails dependem.
 
 ## Convenções de código
 
-- Código em **inglês** (tabela, função, variável). Strings de UI e do agente em **pt-BR**.
+- Código em **inglês**; strings de UI e do agente em **pt-BR**.
 - Sem `any`: `unknown` + narrowing.
-- Sem `console.log` em produção — Sentry.
-- Server Actions e Route Handlers validam input com Zod no servidor.
-- Components PascalCase; utils kebab-case.
+- Sem `console.log`: `lib/observability/logger.ts` é a única porta de log.
+- Route Handler e Server Action validam input com Zod.
+- Componentes PascalCase; utilitários kebab-case.
 - Comentário só onde o "porquê" não é óbvio.
 
 ## Estrutura
@@ -130,21 +121,27 @@ prompt é commit + registro, nunca edição direta em produção.
 ```
 app/
   api/whatsapp/inbound/     webhook do gateway (idempotente)
-  api/jobs/turn/            worker do turno (assinado pelo QStash)
-  (admin)/                  console: conversas, base, prompt, métricas
+  api/jobs/turn/            worker do turno (assinado pela fila)
+  api/cron/outbox/          drenagem do HubSpot
+  admin/                    console: painel, conversas, base, prompt
+  entrar/                   login do console
 lib/
-  whatsapp/                 gateway (porta) + evolution + cloud-api
-  ai/                       agente, tools, retrieval, pós-validação
-  kb/                       ingestão, chunking, embeddings
-  tax/                      cronograma e alíquotas versionadas
-  hubspot/                  cliente + outbox drainer
-  queue/                    publish/consume + debounce
+  whatsapp/                 gateway + normalização + split
+  ai/                       agente, prompt, guard-rails, tools
+  kb/                       chunking, embeddings, busca, ingestão
+  tax/                      cronograma versionado (revisão fiscal)
+  conversations/            repositório do pipeline
+  hubspot/                  cliente + outbox
+  admin/                    autorização, queries e actions do console
+  queue/, turn/, supabase/, observability/, env.ts, time.ts
 db/
   schema.ts                 Drizzle (single source of truth)
-  rls.sql                   políticas + helpers + triggers
-  migrations/
-docs/                       auditoria, arquitetura, prompt, fases
-legacy/                     fluxo n8n original + hotfix + ferramentas
+  extensions.sql            pgvector, pg_trgm
+  functions.sql             tsvector, índices HNSW/GIN, kb_search
+  rls.sql                   políticas + helpers + trigger
+  bootstrap.sql             GERADO: tudo junto para o SQL Editor
+kb/                         manifesto e documentos da base
+scripts/                    ingestão, gerador do bootstrap, verificação SQL
 ```
 
 ## Antes de commitar
@@ -153,14 +150,16 @@ legacy/                     fluxo n8n original + hotfix + ferramentas
 pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
 
-`pnpm lint` é `eslint .` — o `next lint` foi removido no Next 16. O CI roda os quatro mais a
-verificação de migration em dia.
+O CI roda os quatro, verifica migration/bootstrap em dia e aplica o SQL num Postgres com pgvector,
+conferindo RLS, idempotência e a busca com filtro de vigência.
 
 ## Armadilhas
 
-- **"O agente respondeu fora de contexto."** Provavelmente mensagem não-texto chegou vazia. Ver §6.
-- **"Respondeu três vezes."** Debounce ou lock de conversa. Ver §7.
-- **"Respondeu duplicado depois de reconectar o WhatsApp."** Idempotência por `provider_message_id`. Ver §5.
-- **"Query do Drizzle vem vazia."** RLS sem JWT ou sem política.
+- **"O agente recusa tudo."** A base está vazia ou sem vigência válida. Ver `/admin/base`.
+- **"Respondeu fora de contexto."** Mensagem não-texto chegou vazia. Ver §7.
+- **"Respondeu três vezes."** Debounce ou lock. Ver §8.
+- **"Duplicou depois de reconectar o WhatsApp."** Idempotência por `provider_message_id`. Ver §6.
+- **"Query do Drizzle vem vazia."** RLS sem JWT, ou política ausente.
 - **"Timeout na Vercel."** Porta 5432 em vez de 6543, ou Drizzle sem `max:1, prepare:false`.
-- **"O agente inventou uma alíquota."** Pós-validação furada ou tool de cronograma não chamada. Ver §1 e §3.
+- **"A resposta citou norma errada."** Guard-rail de citação: confira `ai_runs.refusal_reason` e o
+  rótulo de citação da fonte no manifesto.

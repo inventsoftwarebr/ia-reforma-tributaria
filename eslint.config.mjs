@@ -2,7 +2,7 @@ import next from "eslint-config-next";
 import nextTypescript from "eslint-config-next/typescript";
 
 const config = [
-  { ignores: [".next/**", "node_modules/**", "legacy/**", "db/migrations/**"] },
+  { ignores: [".next/**", "node_modules/**", "db/migrations/**"] },
   ...next,
   ...nextTypescript,
   {
