@@ -8,7 +8,13 @@ import { validateDatabaseUrl } from "./db-url";
  */
 const serverSchema = z.object({
   /** URL pública da app — a fila usa para chamar o worker de volta. */
-  APP_URL: z.string().min(1),
+  APP_URL: z.string().default(""),
+  /**
+   * Domínio de produção do projeto, informado pela própria Vercel (variável de
+   * sistema). Usado quando APP_URL não está preenchido — assim o endereço que
+   * a fila chama de volta não fica desatualizado se o domínio mudar.
+   */
+  VERCEL_PROJECT_PRODUCTION_URL: z.string().default(""),
 
   /** Transaction pooler do Supabase (porta 6543). Ver lib/db-url.ts. */
   DATABASE_URL: z.string().superRefine((value, ctx) => {
@@ -88,6 +94,10 @@ const serverSchema = z.object({
 }).superRefine((env, ctx) => {
   // A chave exigida depende do provedor escolhido: faltando, o deploy na
   // Vercel falha dizendo qual, em vez de a primeira conversa falhar.
+  if (!env.APP_URL && !env.VERCEL_PROJECT_PRODUCTION_URL) {
+    ctx.addIssue({ code: "custom", path: ["APP_URL"], message: "faltando" });
+  }
+
   const needs: { key: keyof typeof env; because: string }[] = [];
   if (env.AI_PROVIDER === "google" || env.EMBEDDING_PROVIDER === "google") {
     needs.push({ key: "GOOGLE_GENERATIVE_AI_API_KEY", because: "provedor google" });
@@ -126,6 +136,21 @@ export function serverEnv(): ServerEnv {
   }
   cached = parsed.data;
   return cached;
+}
+
+/** Completa o https:// e tira a barra final: "x.vercel.app/" → "https://x.vercel.app". */
+export function normalizeAppUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+/**
+ * Endereço público da aplicação: APP_URL quando preenchido, senão o domínio de
+ * produção que a Vercel informa.
+ */
+export function appUrl(): string {
+  const { APP_URL, VERCEL_PROJECT_PRODUCTION_URL } = serverEnv();
+  return normalizeAppUrl(APP_URL || VERCEL_PROJECT_PRODUCTION_URL);
 }
 
 export function allowedInstances(): string[] {

@@ -1,5 +1,5 @@
 import { Client, Receiver } from "@upstash/qstash";
-import { serverEnv } from "@/lib/env";
+import { appUrl, serverEnv } from "@/lib/env";
 import { logWarn } from "@/lib/observability/logger";
 import { runTurn } from "@/lib/turn/run";
 
@@ -28,7 +28,7 @@ export async function enqueueTurn(job: TurnJob): Promise<{ mode: "queued" | "inl
 
   const client = new Client({ token: env.QSTASH_TOKEN });
   await client.publishJSON({
-    url: `${env.APP_URL.replace(/\/+$/, "")}${JOB_PATH}`,
+    url: `${appUrl()}${JOB_PATH}`,
     body: job,
     delay: env.TURN_DEBOUNCE_SECONDS,
     // Deduplica jobs da mesma conversa dentro da janela de debounce: várias

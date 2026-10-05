@@ -76,8 +76,10 @@ específica, e o token só funciona no endereço dessa região. Se não mostrar,
    `EVOLUTION_WEBHOOK_SECRET` e `CRON_SECRET`.
 3. **Deploy**. Faltando variável obrigatória o build falha com a lista do que falta — de
    propósito.
-4. Copie a URL real do projeto, corrija `APP_URL` e faça **Redeploy**. Essa variável é o endereço
-   que a fila chama de volta; errada, nenhuma resposta sai.
+4. `APP_URL` é opcional: sem ela, o sistema usa o domínio de produção que a própria Vercel
+   informa. Se preencher, use o domínio que aparece em **Overview → Domains** — é o endereço que a
+   fila chama de volta, e errado, nenhuma resposta sai. Se tiver dúvida, apague a variável e faça
+   **Redeploy**: o domínio certo entra sozinho.
 5. Conferir: `curl -i -X POST https://<sua-url>/api/whatsapp/inbound` deve responder **401**.
 
 O lead vai ao HubSpot **na hora** em que a pessoa pede um especialista. O cron em

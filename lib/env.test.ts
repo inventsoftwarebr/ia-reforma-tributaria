@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resetEnvCache, serverEnv, simulatorLink } from "./env";
+import { appUrl, normalizeAppUrl, resetEnvCache, serverEnv, simulatorLink } from "./env";
 
 const BASE: Record<string, string> = {
   APP_URL: "https://ia.vercel.app",
@@ -14,6 +14,11 @@ const BASE: Record<string, string> = {
 };
 
 const original = { ...process.env };
+
+/** BASE sem o APP_URL, para testar o domínio informado pela Vercel. */
+const SEM_APP_URL = Object.fromEntries(
+  Object.entries(BASE).filter(([key]) => key !== "APP_URL"),
+);
 
 function useEnv(vars: Record<string, string>) {
   for (const key of Object.keys(process.env)) delete process.env[key];
@@ -49,6 +54,35 @@ describe("variáveis de ambiente", () => {
       SIMULATOR_UTM: "utm_source=whatsapp",
     });
     expect(simulatorLink()).toBe("https://lp.inventsoftware.com.br/novo-simulador/?utm_source=whatsapp");
+  });
+
+  it("APP_URL preenchido vale sobre o domínio da Vercel", () => {
+    useEnv({
+      ...BASE,
+      GOOGLE_GENERATIVE_AI_API_KEY: "g",
+      VERCEL_PROJECT_PRODUCTION_URL: "outro.vercel.app",
+    });
+    expect(appUrl()).toBe("https://ia.vercel.app");
+  });
+
+  it("sem APP_URL, usa o domínio de produção que a Vercel informa", () => {
+    useEnv({
+      ...SEM_APP_URL,
+      GOOGLE_GENERATIVE_AI_API_KEY: "g",
+      VERCEL_PROJECT_PRODUCTION_URL: "ia-reforma-tributaria-x.vercel.app",
+    });
+    expect(appUrl()).toBe("https://ia-reforma-tributaria-x.vercel.app");
+  });
+
+  it("sem APP_URL e fora da Vercel, diz que falta", () => {
+    useEnv({ ...SEM_APP_URL, GOOGLE_GENERATIVE_AI_API_KEY: "g" });
+    expect(() => serverEnv()).toThrow(/APP_URL: faltando/);
+  });
+
+  it("normaliza o endereço colado sem https ou com barra no fim", () => {
+    expect(normalizeAppUrl("ia.vercel.app")).toBe("https://ia.vercel.app");
+    expect(normalizeAppUrl("https://ia.vercel.app/")).toBe("https://ia.vercel.app");
+    expect(normalizeAppUrl("  https://ia.vercel.app//  ")).toBe("https://ia.vercel.app");
   });
 
   it("sem a chave do Gemini, diz qual falta", () => {
