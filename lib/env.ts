@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validateDatabaseUrl } from "./db-url";
 
 /**
  * Env do servidor, validado em lote: falha com a lista completa do que falta,
@@ -8,6 +9,12 @@ import { z } from "zod";
 const serverSchema = z.object({
   /** URL pública da app — a fila usa para chamar o worker de volta. */
   APP_URL: z.string().min(1),
+
+  /** Transaction pooler do Supabase (porta 6543). Ver lib/db-url.ts. */
+  DATABASE_URL: z.string().superRefine((value, ctx) => {
+    const problem = validateDatabaseUrl(value);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  }),
 
   // Supabase Auth do console. O pipeline não usa supabase-js: fala com o banco
   // pela conexão Postgres (DATABASE_URL), então a chave secreta não é exigida.
@@ -71,7 +78,13 @@ export function serverEnv(): ServerEnv {
   const parsed = serverSchema.safeParse(process.env);
   if (!parsed.success) {
     const missing = parsed.error.issues
-      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+      .map((issue) => {
+        const name = issue.path.join(".");
+        // Mensagem padrão do zod para ausência é ilegível no log da Vercel.
+        return issue.message.includes("received undefined")
+          ? `${name}: faltando`
+          : `${name}: ${issue.message}`;
+      })
       .join("; ");
     throw new Error(`Variáveis de ambiente inválidas — ${missing}`);
   }

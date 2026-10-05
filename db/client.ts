@@ -1,5 +1,6 @@
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres, { type Sql } from "postgres";
+import { validateDatabaseUrl } from "../lib/db-url";
 import * as schema from "./schema";
 
 /**
@@ -20,11 +21,8 @@ let database: DB | undefined;
 function getDb(): DB {
   if (database) return database;
   const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error(
-      "DATABASE_URL não está setado. Use a URL do pooler Supabase (porta 6543).",
-    );
-  }
+  const problem = validateDatabaseUrl(url);
+  if (problem || !url) throw new Error(problem ?? "DATABASE_URL ausente.");
   client = postgres(url, { max: 1, prepare: false });
   database = drizzle(client, { schema });
   return database;
