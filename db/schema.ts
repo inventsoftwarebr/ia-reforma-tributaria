@@ -27,6 +27,7 @@ import {
   varchar,
   vector,
 } from "drizzle-orm/pg-core";
+import { EMBEDDING_DIMENSIONS } from "../lib/kb/dimensions";
 
 // =============================================================================
 // Enums
@@ -239,7 +240,7 @@ export const kbChunks = pgTable(
     heading: text("heading"),
     content: text("content").notNull(),
     tokens: integer("tokens").notNull().default(0),
-    embedding: vector("embedding", { dimensions: 1536 }),
+    embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }),
     metadata: jsonb("metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

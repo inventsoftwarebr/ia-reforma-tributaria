@@ -8,8 +8,13 @@ Agente de WhatsApp que responde dúvidas sobre a Reforma Tributária citando a n
 interesse em lead qualificado / uso do Simulador da Reforma Tributária da Invent.
 
 Stack: Next.js 16 App Router + TypeScript strict + Drizzle + Supabase (Postgres, pgvector, Auth)
-+ Evolution API (gateway WhatsApp, VPS/EasyPanel) + Vercel AI SDK + QStash + HubSpot.
-Hospedagem Vercel.
++ Evolution API (gateway WhatsApp, VPS/EasyPanel) + Vercel AI SDK com Gemini (`gemini-3.5-flash`
+na conversa, `gemini-embedding-2` na busca) + QStash + HubSpot. Hospedagem Vercel.
+
+Embedding tem 1536 dimensões (`lib/kb/dimensions.ts`), igual à coluna do banco; o Gemini gera
+3072 por padrão e recebe `outputDimensionality`. Trocar o modelo de embedding exige reingerir a
+base. Gemini 3.x raciocina dentro do teto de tokens da resposta: `thinkingLevel: "low"` em
+`lib/ai/provider.ts` evita resposta cortada.
 
 Fluxo: `POST /api/whatsapp/inbound` grava e enfileira → `POST /api/jobs/turn` agrega o turno,
 busca na base, chama o modelo, valida e responde → `GET /api/cron/outbox` drena o HubSpot.

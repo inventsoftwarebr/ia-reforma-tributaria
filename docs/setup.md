@@ -40,18 +40,21 @@ senhas — nada em e-mail ou WhatsApp.
 5. **Conferir:** nova query com o conteúdo de `scripts/check-supabase.sql` → **Run**. São 9
    linhas, e todas devem sair com `ok = sim`. Qualquer `NÃO` diz exatamente o que faltou.
 
-## 2. Chaves de IA
+## 2. Chave do Gemini
 
-São duas coisas diferentes:
+Uma chave só serve para a conversa (`gemini-3.5-flash`) e para a busca na base
+(`gemini-embedding-2`).
 
-- **Conversa**: [console.anthropic.com](https://console.anthropic.com) → API Keys → Create Key →
-  `ANTHROPIC_API_KEY`. Coloque crédito em Billing. `AI_PROVIDER=anthropic`,
-  `AI_MODEL=claude-sonnet-5`.
-- **Embeddings** (busca na base): [platform.openai.com](https://platform.openai.com) → API keys →
-  `OPENAI_API_KEY`. `AI_EMBEDDING_MODEL=text-embedding-3-small`.
+1. [aistudio.google.com](https://aistudio.google.com) → **Get API key** → crie a chave num
+   projeto do Google Cloud → `GOOGLE_GENERATIVE_AI_API_KEY`.
+2. **Ative o faturamento nesse projeto do Google Cloud.** No nível gratuito, o Google pode usar o
+   conteúdo enviado para melhorar os produtos dele — inaceitável para conversa com dado pessoal
+   (LGPD) — e os limites de requisição são baixos para atendimento real. Confira os termos atuais
+   da Gemini API ao ativar.
 
-Sem a chave de embeddings a busca na base não funciona e o agente recusa tudo. Trocar o modelo de
-embedding depois exige migration e reingestão — decida agora e não mexa.
+Os modelos já vêm configurados por padrão; só a chave é obrigatória. Trocar o **modelo de
+conversa** depois é só mudar `AI_MODEL`. Trocar o **modelo de embedding** exige reingerir a base
+inteira, porque vetores de modelos diferentes não se comparam.
 
 ## 3. Fila (QStash)
 

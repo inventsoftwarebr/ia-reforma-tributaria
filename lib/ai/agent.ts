@@ -12,7 +12,7 @@ import {
 } from "./guardrails";
 import { buildSystemPrompt, type PromptState } from "./prompt";
 import { activePolicy } from "./prompt-store";
-import { modelLabel, resolveModel } from "./provider";
+import { modelLabel, modelProviderOptions, resolveModel } from "./provider";
 import { buildBuscarBaseTool } from "./tools/buscar-base";
 import { cronogramaReforma } from "./tools/cronograma";
 import { buildHandoffTool } from "./tools/handoff";
@@ -108,6 +108,7 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
         stopWhen: stepCountIs(6),
         maxOutputTokens: env.AI_MAX_TOKENS_PER_TURN,
         temperature: 0.2,
+        providerOptions: modelProviderOptions(env.AI_PROVIDER),
       });
 
       const usedScheduleTool = result.steps.some((step) =>

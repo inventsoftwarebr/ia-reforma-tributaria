@@ -39,16 +39,28 @@ const serverSchema = z.object({
   QSTASH_NEXT_SIGNING_KEY: z.string().default(""),
   TURN_DEBOUNCE_SECONDS: z.coerce.number().int().min(0).max(120).default(7),
 
-  // Modelo de conversa
-  AI_PROVIDER: z.enum(["anthropic", "google"]).default("anthropic"),
-  AI_MODEL: z.string().min(1),
-  AI_MAX_TOKENS_PER_TURN: z.coerce.number().int().positive().default(1200),
+  // Modelo de conversa. gemini-3.5-flash: estável desde 19/05/2026, sem
+  // desligamento antes de 19/05/2027. Trocar de modelo é só mudar a variável.
+  AI_PROVIDER: z.enum(["google", "anthropic"]).default("google"),
+  AI_MODEL: z.string().min(1).default("gemini-3.5-flash"),
+  /**
+   * Teto de saída por turno. Inclui o raciocínio interno do modelo, não só o
+   * texto da resposta — por isso folga sobre os ~400 tokens de uma resposta de
+   * WhatsApp.
+   */
+  AI_MAX_TOKENS_PER_TURN: z.coerce.number().int().positive().default(2048),
 
   /**
-   * Embeddings. Trocar de modelo muda a dimensão do vetor e exige migration em
-   * kb_chunks.embedding + reingestão completa da base.
+   * Embeddings da base. O modelo pode mudar, a dimensão não: ver
+   * lib/kb/dimensions.ts. Trocar de modelo exige reingestão completa, porque
+   * vetores de modelos diferentes não são comparáveis entre si.
    */
-  AI_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
+  EMBEDDING_PROVIDER: z.enum(["google", "openai"]).default("google"),
+  AI_EMBEDDING_MODEL: z.string().min(1).default("gemini-embedding-2"),
+
+  // Chaves: só a do provedor escolhido é exigida (ver superRefine abaixo).
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().default(""),
+  ANTHROPIC_API_KEY: z.string().default(""),
   OPENAI_API_KEY: z.string().default(""),
 
   /** Quantos trechos da base entram no contexto de cada resposta. */
@@ -67,6 +79,24 @@ const serverSchema = z.object({
 
   /** Protege as rotas de cron na Vercel. */
   CRON_SECRET: z.string().default(""),
+}).superRefine((env, ctx) => {
+  // A chave exigida depende do provedor escolhido: faltando, o deploy na
+  // Vercel falha dizendo qual, em vez de a primeira conversa falhar.
+  const needs: { key: keyof typeof env; because: string }[] = [];
+  if (env.AI_PROVIDER === "google" || env.EMBEDDING_PROVIDER === "google") {
+    needs.push({ key: "GOOGLE_GENERATIVE_AI_API_KEY", because: "provedor google" });
+  }
+  if (env.AI_PROVIDER === "anthropic") {
+    needs.push({ key: "ANTHROPIC_API_KEY", because: "AI_PROVIDER=anthropic" });
+  }
+  if (env.EMBEDDING_PROVIDER === "openai") {
+    needs.push({ key: "OPENAI_API_KEY", because: "EMBEDDING_PROVIDER=openai" });
+  }
+  for (const { key, because } of needs) {
+    if (!env[key]) {
+      ctx.addIssue({ code: "custom", path: [key], message: `faltando (${because})` });
+    }
+  }
 });
 
 export type ServerEnv = z.infer<typeof serverSchema>;
