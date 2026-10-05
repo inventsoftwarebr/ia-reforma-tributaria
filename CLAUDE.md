@@ -17,7 +17,10 @@ base. Gemini 3.x raciocina dentro do teto de tokens da resposta: `thinkingLevel:
 `lib/ai/provider.ts` evita resposta cortada.
 
 Fluxo: `POST /api/whatsapp/inbound` grava e enfileira → `POST /api/jobs/turn` agrega o turno,
-busca na base, chama o modelo, valida e responde → `GET /api/cron/outbox` drena o HubSpot.
+busca na base, chama o modelo, valida e responde. Quando o turno registra pedido de especialista,
+o lead vai ao HubSpot na hora; `GET /api/cron/outbox` roda uma vez por dia só para reenviar o
+que falhou. Cron da Vercel nunca mais de uma vez por dia: no plano Hobby o deploy é recusado
+(`lib/vercel-config.test.ts` garante).
 
 ## Regras invioláveis
 

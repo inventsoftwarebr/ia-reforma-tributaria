@@ -36,9 +36,20 @@ export interface AgentResult {
   latencyMs: number;
   retrievedCount: number;
   citedChunkIds: string[];
+  /** A pessoa pediu especialista neste turno: o lead deve ir ao HubSpot já. */
+  handoffRequested: boolean;
 }
 
 const SCHEDULE_TOOL = "cronograma_reforma";
+const HANDOFF_TOOL = "solicitar_contato_humano";
+
+/** O agente chamou esta ferramenta em algum passo da resposta? */
+export function calledTool(
+  steps: readonly { toolCalls: readonly { toolName: string }[] }[],
+  toolName: string,
+): boolean {
+  return steps.some((step) => step.toolCalls.some((call) => call.toolName === toolName));
+}
 const RETRIES = 1;
 
 /**
@@ -103,7 +114,7 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
           buscar_base: buildBuscarBaseTool(collected),
           [SCHEDULE_TOOL]: cronogramaReforma,
           oferecer_simulador: buildSimuladorTool(input.conversationId),
-          solicitar_contato_humano: buildHandoffTool(input.conversationId),
+          [HANDOFF_TOOL]: buildHandoffTool(input.conversationId),
         },
         stopWhen: stepCountIs(6),
         maxOutputTokens: env.AI_MAX_TOKENS_PER_TURN,
@@ -111,9 +122,7 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
         providerOptions: modelProviderOptions(env.AI_PROVIDER),
       });
 
-      const usedScheduleTool = result.steps.some((step) =>
-        step.toolCalls.some((call) => call.toolName === SCHEDULE_TOOL),
-      );
+      const usedScheduleTool = calledTool(result.steps, SCHEDULE_TOOL);
 
       const verdict = applyGuardrails({
         text: toWhatsAppFormatting(result.text),
@@ -151,6 +160,7 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
         latencyMs: Date.now() - startedAt,
         retrievedCount: collected.length,
         citedChunkIds: [...new Set(citedChunkIds)],
+        handoffRequested: calledTool(result.steps, HANDOFF_TOOL),
       };
     } catch (error) {
       lastError = error;

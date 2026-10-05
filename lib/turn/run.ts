@@ -9,6 +9,8 @@ import {
   recordJobFailure,
   recordOutboundMessage,
 } from "@/lib/conversations/repository";
+import { hubspotEnabled } from "@/lib/env";
+import { drainHubspotOutbox } from "@/lib/hubspot/outbox";
 import { describeError, logInfo, logError } from "@/lib/observability/logger";
 import { getGateway } from "@/lib/whatsapp/gateway";
 import { splitForWhatsApp } from "@/lib/whatsapp/split";
@@ -126,6 +128,15 @@ export async function runTurn(input: { conversationId: string }): Promise<TurnOu
       retrieved: answer.retrievedCount,
       latencyMs: answer.latencyMs,
     });
+
+    // Quem pediu especialista não pode esperar o cron diário: envia o lead ao
+    // HubSpot agora, depois de já ter respondido à pessoa. Se o HubSpot falhar,
+    // a linha fica pendente no outbox e o cron diário tenta de novo.
+    if (answer.handoffRequested && hubspotEnabled()) {
+      await drainHubspotOutbox(5).catch((error: unknown) => {
+        logError("turn.hubspot_drain_failed", error, { conversationId });
+      });
+    }
 
     return { status: "answered", blocks };
   } catch (error) {

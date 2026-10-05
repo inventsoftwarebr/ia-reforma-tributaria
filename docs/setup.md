@@ -79,7 +79,13 @@ específica, e o token só funciona no endereço dessa região. Se não mostrar,
    que a fila chama de volta; errada, nenhuma resposta sai.
 5. Conferir: `curl -i -X POST https://<sua-url>/api/whatsapp/inbound` deve responder **401**.
 
-O cron do outbox já vai configurado em `vercel.json` (a cada 10 minutos).
+O lead vai ao HubSpot **na hora** em que a pessoa pede um especialista. O cron em
+`vercel.json` roda uma vez por dia (08:00 de Brasília) só para reenviar o que tiver falhado.
+
+**Plano da Vercel:** no Hobby (gratuito), a Vercel recusa o deploy inteiro se alguma rotina rodar
+mais de uma vez por dia — e recusa antes do build, sem log, só com "Deployment failed". Um teste
+no CI impede que isso volte. Além disso, os termos do Hobby são para uso pessoal e não comercial:
+para um canal de atendimento da Invent, o projeto deve ficar no time Pro.
 
 ## 5. Instância do WhatsApp
 
