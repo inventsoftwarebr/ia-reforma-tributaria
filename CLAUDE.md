@@ -77,10 +77,17 @@ registro em `job_failures` e log de erro.
 
 ### 11. RLS default-deny em todas as tabelas
 
-Política explícita em `db/rls.sql` **no mesmo commit** que cria ou altera a tabela. O console lê
-pela conexão de serviço, que ignora RLS — por isso **toda página e toda Server Action chama
-`requireAgent()`/`requireAdmin()`**. O RLS é a segunda camada, para acesso direto à API do
-Supabase. Service role nunca vai para o navegador.
+Política explícita em `db/rls.sql` **no mesmo commit** que cria ou altera a tabela. O console e o
+pipeline leem pela conexão Postgres (papel `postgres`, que tem BYPASSRLS no Supabase) — por isso
+**toda página e toda Server Action chama `requireAgent()`/`requireAdmin()`**. O RLS é a segunda
+camada, para acesso direto à API do Supabase. A chave secreta do Supabase não é usada pelo código.
+
+Duas armadilhas que já aconteceram aqui, cobertas por `scripts/verify-rls.sql` no CI:
+
+- função usada em política que lê tabela protegida precisa ser `security definer`, senão a
+  política se reavalia em recursão infinita (`app_role()` lendo `profiles`);
+- política de "editar a própria linha" libera todas as colunas — em `profiles`, isso deixava
+  qualquer atendente se promover a admin. Não recrie.
 
 ### 12. Runtime Node
 

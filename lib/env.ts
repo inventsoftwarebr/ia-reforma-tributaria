@@ -9,10 +9,11 @@ const serverSchema = z.object({
   /** URL pública da app — a fila usa para chamar o worker de volta. */
   APP_URL: z.string().min(1),
 
-  // Supabase (auth do console + service role para o pipeline)
+  // Supabase Auth do console. O pipeline não usa supabase-js: fala com o banco
+  // pela conexão Postgres (DATABASE_URL), então a chave secreta não é exigida.
   NEXT_PUBLIC_SUPABASE_URL: z.string().min(1),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  /** "Publishable key" no painel (sb_publishable_...), ou a anon key legada. */
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
 
   // WhatsApp
   WHATSAPP_GATEWAY: z.enum(["evolution", "cloud_api"]).default("evolution"),

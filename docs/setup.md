@@ -27,14 +27,16 @@ senhas — nada em e-mail ou WhatsApp.
 
    Troque `[YOUR-PASSWORD]` pela senha. Não inverta: a aplicação roda em serverless e precisa do
    pooler; com 5432 a Vercel esgota conexões.
-3. **Project Settings → API**: Project URL → `NEXT_PUBLIC_SUPABASE_URL`, chave `anon` →
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, chave `service_role` → `SUPABASE_SERVICE_ROLE_KEY`. A
-   `service_role` ignora todas as políticas de segurança: só em variável de ambiente de servidor.
+3. **Project Settings → API Keys**: a URL do projeto → `NEXT_PUBLIC_SUPABASE_URL`, e a
+   **Publishable key** (`sb_publishable_...`) → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Em projeto
+   antigo sem ela, use a `anon` da aba *Legacy*. A **secret key** (`sb_secret_...` /
+   `service_role`) **não é usada**: não copie para lugar nenhum.
 4. **SQL Editor → New query** → cole o conteúdo de `db/bootstrap.sql` (no GitHub, **Copy raw
    file**) → **Run**. Isso cria as 12 tabelas, o pgvector, os índices, a função de busca e as
-   políticas de segurança, e já registra a migration.
-5. **Table Editor** deve listar as tabelas com RLS ativo. Rodar o bootstrap de novo por engano
-   aborta com "Banco já inicializado" em vez de estragar algo.
+   políticas de segurança, e já registra a migration. Rodar de novo por engano aborta com
+   "Banco já inicializado" em vez de estragar algo.
+5. **Conferir:** nova query com o conteúdo de `scripts/check-supabase.sql` → **Run**. São 9
+   linhas, e todas devem sair com `ok = sim`. Qualquer `NÃO` diz exatamente o que faltou.
 
 ## 2. Chaves de IA
 

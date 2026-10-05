@@ -2,9 +2,13 @@
 -- Segurança de linha (RLS): default deny em todas as tabelas. Idempotente.
 --
 -- Conversa e contato são dados pessoais: leitura só para quem trabalha no
--- atendimento. O pipeline (webhook, worker, ingestão) roda com a service role,
--- que ignora RLS por ser BYPASSRLS no Supabase — essa chave nunca vai para o
--- navegador.
+-- atendimento, via API do Supabase (papéis anon/authenticated).
+--
+-- O pipeline (webhook, worker, ingestão) e o console NÃO passam pela API: usam
+-- a conexão Postgres (DATABASE_URL), que entra como o papel `postgres`. No
+-- Supabase esse papel tem BYPASSRLS, e é por isso que ele grava mesmo com RLS
+-- forçado. Se um dia a conexão usar outro papel sem BYPASSRLS, toda leitura
+-- volta vazia e toda escrita falha — scripts/check-supabase.sql confere isso.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -57,8 +61,18 @@ language sql stable as $$
   )::uuid;
 $$;
 
+-- SECURITY DEFINER é obrigatório aqui, não detalhe: as políticas de `profiles`
+-- chamam is_agent() → app_role(), que lê `profiles`. Rodando com os direitos
+-- de quem chama, essa leitura reavalia as mesmas políticas e entra em recursão
+-- infinita ("stack depth limit exceeded"). Rodando como o dono (postgres, que
+-- tem BYPASSRLS no Supabase), a leitura não passa pelo RLS e o ciclo se fecha.
+-- Devolve só o papel de quem está chamando — não expõe nada além disso.
 create or replace function public.app_role() returns text
-language sql stable as $$
+language sql
+stable
+security definer
+set search_path = public
+as $$
   select coalesce(
     (select p.role::text from public.profiles p where p.id = public.auth_uid()),
     'anon'
@@ -102,9 +116,12 @@ drop policy if exists "profiles_select_self_or_agent" on public.profiles;
 create policy "profiles_select_self_or_agent" on public.profiles
   for select using (id = public.auth_uid() or public.is_agent());
 
+-- NÃO existe política de "editar o próprio perfil", de propósito: ela liberaria
+-- a linha inteira, inclusive a coluna `role`, e qualquer atendente viraria
+-- admin com um PATCH na API usando só a chave pública e o próprio login.
+-- Papel muda apenas por admin (profiles_admin_all) ou por SQL. O drop abaixo
+-- remove a política de bancos criados com a versão anterior deste arquivo.
 drop policy if exists "profiles_update_self" on public.profiles;
-create policy "profiles_update_self" on public.profiles
-  for update using (id = public.auth_uid()) with check (id = public.auth_uid());
 
 drop policy if exists "profiles_admin_all" on public.profiles;
 create policy "profiles_admin_all" on public.profiles

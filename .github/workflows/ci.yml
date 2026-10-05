@@ -48,8 +48,7 @@ jobs:
         env:
           APP_URL: http://localhost:3000
           NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci
-          SUPABASE_SERVICE_ROLE_KEY: ci
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci
           EVOLUTION_API_URL: http://localhost:8080
           EVOLUTION_API_KEY: ci
           EVOLUTION_INSTANCE: ci
@@ -95,8 +94,28 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # O Supabase tem auth.users; um Postgres puro não. Criar uma versão mínima
+      # faz o bootstrap instalar o gatilho de perfil, que o teste de RLS usa.
+      - name: Simular o schema auth do Supabase
+        run: |
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -q -c "
+            create schema auth;
+            create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb);"
+
       - name: Aplicar bootstrap.sql
         run: psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -q -f db/bootstrap.sql
+
+      # Conferência que a pessoa roda no SQL Editor: nenhuma linha pode dar NÃO.
+      - name: Conferência do SQL Editor
+        run: |
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f scripts/check-supabase.sql | tee /tmp/check.txt
+          if grep -q "NÃO" /tmp/check.txt; then exit 1; fi
+
+      # Exercita as políticas com um papel sem BYPASSRLS e JWT simulado: anônimo
+      # e usuário sem perfil não veem nada, atendente não altera a base nem se
+      # promove, admin faz curadoria.
+      - name: RLS de ponta a ponta
+        run: psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f scripts/verify-rls.sql
 
       - name: Verificar estrutura, RLS, idempotência e busca na base
         run: psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f scripts/verify-bootstrap.sql
