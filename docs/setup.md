@@ -59,7 +59,10 @@ inteira, porque vetores de modelos diferentes não se comparam.
 ## 3. Fila (QStash)
 
 [upstash.com](https://upstash.com) → console → **QStash**. Copie da própria página:
-`QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`.
+`QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` (as três são Secret).
+
+Se a página também mostrar `QSTASH_URL`, cadastre ela junto (Config): a conta está numa região
+específica, e o token só funciona no endereço dessa região. Se não mostrar, não precisa.
 
 É a fila que faz três mensagens seguidas virarem **uma** resposta, em vez de três atropeladas.
 
