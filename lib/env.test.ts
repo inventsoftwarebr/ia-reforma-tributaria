@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resetEnvCache, serverEnv } from "./env";
+import { resetEnvCache, serverEnv, simulatorLink } from "./env";
 
 const BASE: Record<string, string> = {
   APP_URL: "https://ia.vercel.app",
@@ -11,7 +11,6 @@ const BASE: Record<string, string> = {
   EVOLUTION_API_KEY: "k",
   EVOLUTION_INSTANCE: "invent",
   EVOLUTION_WEBHOOK_SECRET: "0123456789abcdef0123",
-  SIMULATOR_URL: "https://lp.inventsoftware.com.br/simulador/",
 };
 
 const original = { ...process.env };
@@ -33,6 +32,23 @@ describe("variáveis de ambiente", () => {
     expect(env.AI_MODEL).toBe("gemini-3.5-flash");
     expect(env.EMBEDDING_PROVIDER).toBe("google");
     expect(env.AI_EMBEDDING_MODEL).toBe("gemini-embedding-2");
+  });
+
+  it("sem as variáveis do simulador, usa o link e a UTM do fluxo original", () => {
+    useEnv({ ...BASE, GOOGLE_GENERATIVE_AI_API_KEY: "g" });
+    expect(simulatorLink()).toBe(
+      "https://lp.inventsoftware.com.br/simulador-reforma-tributaria/?utm_source=ia+whatsapp+mkt&utm_campaign=simulador+da+reforma+tributaria",
+    );
+  });
+
+  it("marketing troca o link pela variável", () => {
+    useEnv({
+      ...BASE,
+      GOOGLE_GENERATIVE_AI_API_KEY: "g",
+      SIMULATOR_URL: "https://lp.inventsoftware.com.br/novo-simulador/",
+      SIMULATOR_UTM: "utm_source=whatsapp",
+    });
+    expect(simulatorLink()).toBe("https://lp.inventsoftware.com.br/novo-simulador/?utm_source=whatsapp");
   });
 
   it("sem a chave do Gemini, diz qual falta", () => {

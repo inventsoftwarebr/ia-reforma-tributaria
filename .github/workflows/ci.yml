@@ -54,7 +54,6 @@ jobs:
           EVOLUTION_INSTANCE: ci
           EVOLUTION_WEBHOOK_SECRET: ci-secret-with-16-chars
           AI_MODEL: gemini-3.5-flash
-          SIMULATOR_URL: https://lp.inventsoftware.com.br/simulador-reforma-tributaria/
 
   # Aplica o SQL de verdade: bootstrap.sql é o que alguém cola no SQL Editor
   # do Supabase, então precisa rodar limpo num banco novo.

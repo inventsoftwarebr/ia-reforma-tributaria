@@ -68,9 +68,15 @@ const serverSchema = z.object({
 
   RATE_LIMIT_MESSAGES_PER_DAY: z.coerce.number().int().positive().default(50),
 
-  // Conversão
-  SIMULATOR_URL: z.string().min(1),
-  SIMULATOR_UTM: z.string().default(""),
+  // Conversão. Valores do fluxo original do n8n: link público e fixo, por isso
+  // têm padrão. A variável existe para o marketing trocar sem mexer em código.
+  SIMULATOR_URL: z
+    .string()
+    .min(1)
+    .default("https://lp.inventsoftware.com.br/simulador-reforma-tributaria/"),
+  SIMULATOR_UTM: z
+    .string()
+    .default("utm_source=ia+whatsapp+mkt&utm_campaign=simulador+da+reforma+tributaria"),
 
   // HubSpot (opcional: sem token, o outbox acumula e avisa)
   HUBSPOT_PRIVATE_APP_TOKEN: z.string().default(""),

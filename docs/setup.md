@@ -71,7 +71,8 @@ específica, e o token só funciona no endereço dessa região. Se não mostrar,
 1. [vercel.com](https://vercel.com) → **Add New → Project** → importe o repositório. Se ele não
    aparecer, dê acesso ao app do GitHub em *Configure*.
 2. Cole as variáveis de ambiente (Production e Preview) antes do primeiro deploy. Use
-   `.env.example` como lista. Gere os dois segredos com `openssl rand -hex 32`:
+   `.env.example` como lista. `SIMULATOR_URL` e `SIMULATOR_UTM` são opcionais: sem elas, vale o
+   link do simulador com a UTM do fluxo original. Gere os dois segredos com `openssl rand -hex 32`:
    `EVOLUTION_WEBHOOK_SECRET` e `CRON_SECRET`.
 3. **Deploy**. Faltando variável obrigatória o build falha com a lista do que falta — de
    propósito.
