@@ -23,10 +23,12 @@ senhas — nada em e-mail ou WhatsApp.
    | Onde | Porta | Variável |
    | --- | --- | --- |
    | Transaction pooler | 6543 | `DATABASE_URL` |
-   | Direct connection | 5432 | `DIRECT_URL` |
+   | Session pooler | 5432 | `DIRECT_URL` |
 
    Troque `[YOUR-PASSWORD]` pela senha. Não inverta: a aplicação roda em serverless e precisa do
-   pooler; com 5432 a Vercel esgota conexões.
+   pooler em transaction mode; com 5432 a Vercel esgota conexões. Para o `DIRECT_URL`, use o
+   *Session pooler* e não a *Direct connection*: esta pode funcionar só em IPv6 e falhar na sua
+   rede. O `DIRECT_URL` só é usado por migration e scripts — a Vercel não precisa dele.
 3. **Project Settings → API Keys**: a URL do projeto → `NEXT_PUBLIC_SUPABASE_URL`, e a
    **Publishable key** (`sb_publishable_...`) → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Em projeto
    antigo sem ela, use a `anon` da aba *Legacy*. A **secret key** (`sb_secret_...` /
