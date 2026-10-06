@@ -93,3 +93,34 @@ export async function checkAuth(
     return "o serviço de login do Supabase não respondeu em 8 segundos — confira NEXT_PUBLIC_SUPABASE_URL e se o projeto não está pausado";
   }
 }
+
+/**
+ * Confere a chave do Gemini e se o modelo configurado existe, sem gastar
+ * token: só consulta a ficha do modelo.
+ */
+export async function checkGeminiModel(
+  apiKey: string,
+  model: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  if (!apiKey) return "não verificado — falta GOOGLE_GENERATIVE_AI_API_KEY";
+  try {
+    const response = await fetchImpl(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`,
+      {
+        headers: { "x-goog-api-key": apiKey },
+        signal: AbortSignal.timeout(8_000),
+        cache: "no-store",
+      },
+    );
+    if (response.ok) return "ok";
+    if (response.status === 404) return `o modelo ${model} não existe para esta chave`;
+    if (response.status === 400 || response.status === 401 || response.status === 403) {
+      return "o Google recusou a chave — confira GOOGLE_GENERATIVE_AI_API_KEY";
+    }
+    if (response.status === 429) return "cota da chave esgotada no Google AI Studio";
+    return `o Google respondeu ${response.status}`;
+  } catch {
+    return "a API do Gemini não respondeu em 8 segundos";
+  }
+}

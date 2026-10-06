@@ -305,3 +305,15 @@ export async function listPromptVersions() {
     .from(promptVersions)
     .orderBy(desc(promptVersions.createdAt));
 }
+
+/** Última mensagem recebida e enviada — prova de que o webhook chega e a resposta sai. */
+export async function lastMessages(): Promise<{ recebida: Date | null; enviada: Date | null }> {
+  const [row] = await db
+    .select({
+      recebida: sql<Date | null>`max(${messages.createdAt}) filter (where ${messages.direction} = 'inbound')`,
+      enviada: sql<Date | null>`max(${messages.createdAt}) filter (where ${messages.direction} = 'outbound')`,
+    })
+    .from(messages);
+  const toDate = (value: Date | string | null | undefined) => (value ? new Date(value) : null);
+  return { recebida: toDate(row?.recebida), enviada: toDate(row?.enviada) };
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAuth, describeDatabaseError } from "./health";
+import { checkAuth, checkGeminiModel, describeDatabaseError } from "./health";
 import { TimeoutError } from "./timeout";
 
 const pgError = (code: string, message = "") => Object.assign(new Error(message), { code });
@@ -80,5 +80,25 @@ describe("checkAuth", () => {
 
   it("sem variáveis", async () => {
     expect(await checkAuth(undefined, "k", resposta(200))).toMatch(/não verificado/);
+  });
+});
+
+describe("checkGeminiModel", () => {
+  const resposta = (status: number) => async () => new Response("{}", { status });
+
+  it("ok com chave e modelo válidos", async () => {
+    expect(await checkGeminiModel("k", "gemini-3.5-flash", resposta(200))).toBe("ok");
+  });
+
+  it("modelo inexistente", async () => {
+    expect(await checkGeminiModel("k", "gemini-x", resposta(404))).toMatch(/gemini-x não existe/);
+  });
+
+  it("chave recusada", async () => {
+    expect(await checkGeminiModel("k", "m", resposta(400))).toMatch(/recusou a chave/);
+  });
+
+  it("sem chave", async () => {
+    expect(await checkGeminiModel("", "m", resposta(200))).toMatch(/não verificado/);
   });
 });

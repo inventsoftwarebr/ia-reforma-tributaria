@@ -1,10 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { conversations, jobFailures, kbSources, promptVersions } from "@/db/schema";
+import { appUrl, serverEnv } from "@/lib/env";
 import { logInfo } from "@/lib/observability/logger";
+import { configProblem, configureWebhook, webhookCheck } from "@/lib/whatsapp/evolution-admin";
+import { evolutionConfig, webhookTarget } from "@/lib/whatsapp/status";
 import { requireAdmin, requireAgent } from "./auth";
 
 /**
@@ -104,4 +108,34 @@ export async function resolveJobFailure(id: string): Promise<void> {
 
   logInfo("admin.failure_resolved", { id, by: user.id });
   revalidatePath("/admin");
+}
+
+/**
+ * Aponta o webhook da instância Evolution para este site, com o segredo. Volta
+ * para a página com o resultado na URL (sem segredo nenhum).
+ */
+export async function configureWhatsAppWebhook(): Promise<never> {
+  const user = await requireAdmin();
+  const destino = webhookTarget();
+
+  let resultado: { ok: boolean; text: string };
+  if (!destino.ok || !destino.url) {
+    resultado = destino;
+  } else {
+    const config = evolutionConfig();
+    const problema = configProblem(config);
+    if (problema) {
+      resultado = { ok: false, text: problema };
+    } else {
+      const gravado = await configureWebhook(config, destino.url);
+      // Relê do servidor: confirma que a Evolution guardou o que foi enviado.
+      resultado = gravado.ok
+        ? await webhookCheck(config, appUrl(), serverEnv().EVOLUTION_WEBHOOK_SECRET)
+        : gravado;
+    }
+  }
+
+  logInfo("admin.whatsapp_webhook", { ok: resultado.ok, by: user.id });
+  const query = new URLSearchParams({ resultado: resultado.ok ? "ok" : "erro", msg: resultado.text });
+  redirect(`/admin/whatsapp?${query.toString()}`);
 }

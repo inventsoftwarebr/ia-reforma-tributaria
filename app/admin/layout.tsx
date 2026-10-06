@@ -13,6 +13,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         <Link href="/admin/conversas">Conversas</Link>
         <Link href="/admin/base">Base</Link>
         <Link href="/admin/prompt">Prompt</Link>
+        <Link href="/admin/whatsapp">WhatsApp</Link>
         <span className="spacer" />
         <span className="muted" style={{ fontSize: "0.85rem" }}>
           {user.email} · {user.role}

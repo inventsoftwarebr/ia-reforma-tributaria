@@ -3,9 +3,10 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { diagnoseSession } from "@/lib/admin/diagnose";
 import { serverEnv } from "@/lib/env";
-import { checkAuth, describeDatabaseError } from "@/lib/health";
+import { checkAuth, checkGeminiModel, describeDatabaseError } from "@/lib/health";
 import { logError } from "@/lib/observability/logger";
 import { withTimeout } from "@/lib/timeout";
+import { whatsappStatus } from "@/lib/whatsapp/status";
 
 /**
  * Diagnóstico para quem configura o sistema: abrir no navegador e ler.
@@ -56,6 +57,32 @@ export async function GET(): Promise<Response> {
   // Região da função: longe da região do Supabase, cada consulta paga a viagem.
   const regiao = process.env.VERCEL_REGION ?? "local";
 
+  // Canal e IA só fazem sentido com as variáveis válidas (serverEnv lança).
+  let whatsapp: Record<string, string> = { estado: "não verificado — corrija as variáveis" };
+  let ia = "não verificado — corrija as variáveis";
+  let fila = "não verificado — corrija as variáveis";
+  if (variaveis === "ok") {
+    const env = serverEnv();
+    const [canal, modelo, embeddings] = await Promise.all([
+      whatsappStatus(),
+      env.AI_PROVIDER === "google"
+        ? checkGeminiModel(env.GOOGLE_GENERATIVE_AI_API_KEY, env.AI_MODEL)
+        : Promise.resolve(`não verificado (${env.AI_PROVIDER})`),
+      env.EMBEDDING_PROVIDER === "google"
+        ? checkGeminiModel(env.GOOGLE_GENERATIVE_AI_API_KEY, env.AI_EMBEDDING_MODEL)
+        : Promise.resolve(`não verificado (${env.EMBEDDING_PROVIDER})`),
+    ]);
+    whatsapp = {
+      conexao: canal.conexao.text,
+      webhook: canal.webhook.text,
+      endereco: canal.destino.ok ? "ok" : canal.destino.text,
+    };
+    ia = modelo === embeddings ? modelo : `conversa: ${modelo}; busca: ${embeddings}`;
+    fila = env.QSTASH_TOKEN
+      ? "QStash"
+      : "sem QStash — responde direto, sem agrupar mensagens seguidas";
+  }
+
   let sessao: Record<string, string> = { usuario: "não verificado — o banco ou as variáveis falharam" };
   if (ok) {
     try {
@@ -75,6 +102,9 @@ export async function GET(): Promise<Response> {
       banco: banco === "ok" ? `ok (${bancoMs} ms)` : banco,
       tabelas,
       login: auth,
+      ia,
+      whatsapp,
+      fila,
       sessao,
     },
     { status: ok ? 200 : 503 },
