@@ -1,6 +1,7 @@
 import { requireAgent } from "@/lib/admin/auth";
 import { overview, refusalsByReason } from "@/lib/admin/queries";
 import { outboxSummary } from "@/lib/hubspot/outbox";
+import { withTimeout } from "@/lib/timeout";
 
 export const dynamic = "force-dynamic";
 
@@ -23,11 +24,12 @@ function Card({ label, value, hint }: { label: string; value: string; hint?: str
 
 export default async function Painel() {
   await requireAgent();
-  const [dados, recusas, outbox] = await Promise.all([
-    overview(),
-    refusalsByReason(),
-    outboxSummary(),
-  ]);
+  // Com prazo: consulta pendurada vira a tela de erro, não uma aba girando.
+  const [dados, recusas, outbox] = await withTimeout(
+    Promise.all([overview(), refusalsByReason(), outboxSummary()]),
+    20_000,
+    "banco",
+  );
 
   const aceite =
     dados.simuladorOfertado === 0

@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
-import { db } from "@/db/client";
+import postgres from "postgres";
+import { CONNECTION_OPTIONS, db } from "@/db/client";
 import { profiles } from "@/db/schema";
 import { overview, refusalsByReason } from "@/lib/admin/queries";
 import { describeDatabaseError } from "@/lib/health";
@@ -79,5 +80,46 @@ export async function diagnoseSession(): Promise<Record<string, string>> {
   resultado.painel_hubspot = formatStep(
     await timedStep(() => outboxSummary(), 15_000, "banco"),
   );
+
+  // Como a página de verdade faz: tudo ao mesmo tempo.
+  resultado.painel_paralelo = formatStep(
+    await timedStep(
+      () => Promise.all([overview(), refusalsByReason(), outboxSummary()]),
+      15_000,
+      "banco",
+    ),
+  );
+  resultado.teste_pipeline = await pipelineProbe();
   return resultado;
+}
+
+/**
+ * Conexão à parte com o envio em lote do postgres-js ligado (o padrão da
+ * biblioteca, desligado em db/client.ts). Se travar aqui e o painel_paralelo
+ * passar, a causa do painel "carregando" está confirmada.
+ */
+async function pipelineProbe(): Promise<string> {
+  const url = process.env.DATABASE_URL;
+  if (!url) return "não verificado";
+  // max_pipeline existe no postgres-js mas falta nos tipos dele; por variável,
+  // o TypeScript não barra a propriedade a mais.
+  const options = { ...CONNECTION_OPTIONS, max_pipeline: 100 };
+  const probe = postgres(url, options);
+  try {
+    const step = await timedStep(
+      () =>
+        Promise.all([
+          probe`select count(*) from public.kb_chunks`,
+          probe`select count(*) from public.hubspot_outbox`,
+          probe`select count(*) from public.conversation_state`,
+        ]),
+      10_000,
+      "banco",
+    );
+    return step.ok
+      ? `sem problema (${step.ms} ms)`
+      : `TRAVA com envio em lote: ${formatStep(step)}`;
+  } finally {
+    await probe.end({ timeout: 1 }).catch(() => undefined);
+  }
 }

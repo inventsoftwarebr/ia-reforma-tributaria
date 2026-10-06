@@ -9,11 +9,23 @@ import * as schema from "./schema";
  *
  * - max: 1         → uma conexão por instância serverless
  * - prepare: false → PgBouncer em transaction mode não suporta prepared statements
+ * - max_pipeline: 0 → uma consulta por vez na conexão. Por padrão o postgres-js
+ *   envia várias juntas (pipelining) quando a página consulta em paralelo, e o
+ *   Supavisor em transaction mode pode nunca responder — o painel ficava
+ *   "carregando" para sempre enquanto as mesmas consultas, uma a uma, levavam
+ *   1,5s. Ver CONNECTION_OPTIONS e lib/admin/diagnose.ts.
  *
  * Lazy: só conecta no primeiro query, para o build não quebrar sem DATABASE_URL.
  */
 
 type DB = PostgresJsDatabase<typeof schema>;
+
+export const CONNECTION_OPTIONS = {
+  max: 1,
+  prepare: false,
+  max_pipeline: 0,
+  connect_timeout: 10,
+} as const;
 
 let client: Sql | undefined;
 let database: DB | undefined;
@@ -25,7 +37,7 @@ function getDb(): DB {
   if (problem || !url) throw new Error(problem ?? "DATABASE_URL ausente.");
   // connect_timeout: banco inalcançável vira erro visível em 10s. O padrão do
   // postgres-js é 30s, e somado a retentativas parecia uma tela travada.
-  client = postgres(url, { max: 1, prepare: false, connect_timeout: 10 });
+  client = postgres(url, CONNECTION_OPTIONS);
   database = drizzle(client, { schema });
   return database;
 }
