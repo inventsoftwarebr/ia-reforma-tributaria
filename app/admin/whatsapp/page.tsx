@@ -57,6 +57,19 @@ export default async function WhatsApp({
         <tbody>
           <Linha titulo="Conexão" check={status.conexao} />
           <Linha titulo="Webhook" check={status.webhook} />
+          {status.webhook.atual && !status.webhook.ok ? (
+            <tr>
+              <td>Destino atual</td>
+              <td />
+              <td>
+                <code>{status.webhook.atual}</code>
+                <div className="muted" style={{ fontSize: "0.85rem" }}>
+                  Anote este endereço antes de trocar: é para ele que se volta, no
+                  Evolution Manager, se precisar desfazer.
+                </div>
+              </td>
+            </tr>
+          ) : null}
           <Linha
             titulo="Endereço do site"
             check={
@@ -77,7 +90,14 @@ export default async function WhatsApp({
             hoje atende pelo n8n, o n8n para de receber as mensagens a partir daqui.
             Comece por um número de teste.
           </p>
-          <button type="submit" data-variant="primary">
+          <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+            <input type="checkbox" name="confirmo" value="sim" required />
+            <span>
+              Entendo que, a partir deste clique, as mensagens desta instância deixam de
+              ir para o destino atual e passam a ser respondidas por este sistema.
+            </span>
+          </label>
+          <button type="submit" data-variant="primary" style={{ marginTop: "0.75rem" }}>
             Configurar webhook automaticamente
           </button>
         </form>

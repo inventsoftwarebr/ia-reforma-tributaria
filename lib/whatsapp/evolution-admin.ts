@@ -228,16 +228,33 @@ export function evaluateWebhook(
   return { ok: true, text: "webhook apontando para este site" };
 }
 
+/**
+ * Endereço do webhook para mostrar na tela: valores da query (onde ficam
+ * tokens) viram "***". Serve para anotar o destino atual antes de trocar e
+ * poder voltar a ele.
+ */
+export function maskUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    for (const key of [...url.searchParams.keys()]) url.searchParams.set(key, "***");
+    return decodeURIComponent(url.toString());
+  } catch {
+    return "(endereço inválido)";
+  }
+}
+
 export async function webhookCheck(
   config: EvolutionConfig,
   appUrl: string,
   secret: string,
   fetchImpl: FetchLike = fetch,
-): Promise<Check> {
+): Promise<Check & { atual?: string }> {
   try {
     const { status, body } = await call(config, "/webhook/find", fetchImpl);
     if (status !== 200) return { ok: false, text: statusFailure(status) };
-    return evaluateWebhook(parseWebhook(body), appUrl, secret);
+    const current = parseWebhook(body);
+    const check = evaluateWebhook(current, appUrl, secret);
+    return current ? { ...check, atual: maskUrl(current.url) } : check;
   } catch (error) {
     return { ok: false, text: requestFailure(error) };
   }

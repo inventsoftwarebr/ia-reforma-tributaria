@@ -114,12 +114,16 @@ export async function resolveJobFailure(id: string): Promise<void> {
  * Aponta o webhook da instância Evolution para este site, com o segredo. Volta
  * para a página com o resultado na URL (sem segredo nenhum).
  */
-export async function configureWhatsAppWebhook(): Promise<never> {
+export async function configureWhatsAppWebhook(formData: FormData): Promise<never> {
   const user = await requireAdmin();
   const destino = webhookTarget();
 
   let resultado: { ok: boolean; text: string };
-  if (!destino.ok || !destino.url) {
+  // Confirmação conferida no servidor: a troca desliga o destino anterior (o
+  // n8n, no número oficial) e não pode acontecer por clique acidental.
+  if (formData.get("confirmo") !== "sim") {
+    resultado = { ok: false, text: "marque a confirmação antes de configurar" };
+  } else if (!destino.ok || !destino.url) {
     resultado = destino;
   } else {
     const config = evolutionConfig();

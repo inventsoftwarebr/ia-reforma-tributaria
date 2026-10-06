@@ -54,7 +54,8 @@ export function webhookTarget(): Check & { url?: string } {
 export interface WhatsAppStatus {
   provedor: string;
   conexao: Check;
-  webhook: Check;
+  /** `atual`: destino configurado hoje, com token mascarado. */
+  webhook: Check & { atual?: string };
   destino: Check;
 }
 

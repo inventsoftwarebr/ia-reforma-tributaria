@@ -5,6 +5,7 @@ import {
   connectionCheck,
   evaluateWebhook,
   expectedWebhookUrl,
+  maskUrl,
   parseWebhook,
   webhookBodies,
 } from "./evolution-admin";
@@ -222,5 +223,17 @@ describe("expectedWebhookUrl", () => {
     expect(expectedWebhookUrl(`${SITE}/`, "a b&c")).toBe(
       `${SITE}/api/whatsapp/inbound?token=a%20b%26c`,
     );
+  });
+});
+
+describe("maskUrl", () => {
+  it("esconde o valor de todo parâmetro e mantém o caminho", () => {
+    expect(maskUrl("https://n8n.vps.app/webhook/reforma-rt?token=abc&x=1")).toBe(
+      "https://n8n.vps.app/webhook/reforma-rt?token=***&x=***",
+    );
+  });
+
+  it("endereço quebrado", () => {
+    expect(maskUrl("n8n sem protocolo")).toBe("(endereço inválido)");
   });
 });
