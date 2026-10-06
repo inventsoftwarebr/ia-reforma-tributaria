@@ -102,7 +102,9 @@ Comece por um **número de teste**, não pelo número de atendimento.
    ```bash
    curl -s "https://<seu-evolution>/instance/fetchInstances" -H "apikey: <APIKEY_GLOBAL>"
    ```
-3. Aponte o webhook da instância para:
+3. Entre no console, abra **WhatsApp** e clique em **Configurar webhook automaticamente**. A
+   tela confere conexão, destino e token, e recusa configurar se `APP_URL` apontar para outro
+   domínio. Para fazer à mão no Evolution Manager, aponte o webhook da instância para:
 
    ```
    https://<sua-url>/api/whatsapp/inbound?token=<EVOLUTION_WEBHOOK_SECRET>
