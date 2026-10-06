@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
  */
 
 interface VercelConfig {
+  regions?: string[];
   crons?: { path: string; schedule: string }[];
 }
 
@@ -27,5 +28,11 @@ describe("vercel.json", () => {
 
   it("a rotina do HubSpot continua configurada", () => {
     expect(config.crons?.map((cron) => cron.path)).toContain("/api/cron/outbox");
+  });
+
+  it("funções na região do banco, e só uma (limite do Hobby)", () => {
+    // Supabase em us-west-2 (Oregon) → pdx1 (Portland). Em iad1 cada consulta
+    // atravessava o continente. Se o banco mudar de região, mude aqui também.
+    expect(config.regions).toEqual(["pdx1"]);
   });
 });
