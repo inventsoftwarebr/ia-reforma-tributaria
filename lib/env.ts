@@ -30,10 +30,12 @@ const serverSchema = z.object({
 
   // WhatsApp
   WHATSAPP_GATEWAY: z.enum(["evolution", "cloud_api"]).default("evolution"),
-  EVOLUTION_API_URL: z.string().min(1),
-  EVOLUTION_API_KEY: z.string().min(1),
+  // trim: espaço ou quebra de linha colados junto com o valor na Vercel fazem
+  // a Evolution recusar a chave sem motivo aparente.
+  EVOLUTION_API_URL: z.string().trim().min(1),
+  EVOLUTION_API_KEY: z.string().trim().min(1),
   /** Uma ou mais instâncias separadas por vírgula. Nunca vazio. */
-  EVOLUTION_INSTANCE: z.string().min(1),
+  EVOLUTION_INSTANCE: z.string().trim().min(1),
   EVOLUTION_WEBHOOK_SECRET: z.string().min(16),
 
   /**

@@ -62,9 +62,26 @@ describe("connectionCheck", () => {
     expect(check.text).toMatch(/QR code/);
   });
 
-  it("chave errada", async () => {
-    const fake: typeof fetch = async () => json(401, {});
-    expect((await connectionCheck(CONFIG, fake)).text).toMatch(/EVOLUTION_API_KEY/);
+  it("chave errada numa Evolution de verdade", async () => {
+    const fake: typeof fetch = async (input) =>
+      String(input) === "https://evo.invent.app/"
+        ? json(200, {
+            message: "Welcome to the Evolution API, it is working!",
+            version: "2.2.3",
+          })
+        : json(401, { message: "Unauthorized" });
+    const check = await connectionCheck(CONFIG, fake);
+    expect(check.ok).toBe(false);
+    expect(check.text).toMatch(/Evolution 2\.2\.3 foi encontrada, mas recusou a chave/);
+    expect(check.text).toMatch(/Manager/);
+  });
+
+  it("endereço que pede senha mas não é a Evolution (Manager, EasyPanel)", async () => {
+    const fake: typeof fetch = async () =>
+      new Response("<html>login</html>", { status: 401 });
+    expect((await connectionCheck(CONFIG, fake)).text).toMatch(
+      /não respondeu como Evolution API/,
+    );
   });
 
   it("instância com nome errado", async () => {

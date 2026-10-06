@@ -88,12 +88,52 @@ function statusFailure(status: number): string {
   return `a Evolution respondeu ${status}`;
 }
 
+/**
+ * A raiz da Evolution responde sem chave ("Welcome to the Evolution API"). Com
+ * isso dá para separar "chave errada" de "endereço que nem é a Evolution" (o
+ * Manager, o painel do EasyPanel), que também podem responder 401.
+ */
+export async function identifyServer(
+  baseUrl: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<{ evolution: boolean; version: string }> {
+  try {
+    const response = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/`, {
+      signal: AbortSignal.timeout(10_000),
+      cache: "no-store",
+    });
+    const body = asRecord(await response.json().catch(() => null));
+    const message = String(body?.message ?? "");
+    return {
+      evolution: /evolution/i.test(message),
+      version: typeof body?.version === "string" ? body.version : "",
+    };
+  } catch {
+    return { evolution: false, version: "" };
+  }
+}
+
+async function keyRejected(
+  config: EvolutionConfig,
+  fetchImpl: FetchLike,
+): Promise<string> {
+  const server = await identifyServer(config.baseUrl, fetchImpl);
+  if (!server.evolution) {
+    return "o endereço em EVOLUTION_API_URL pediu senha, mas não respondeu como Evolution API — use o endereço da API (o mesmo que o Manager pede como “Server URL”), sem /manager e sem o endereço do EasyPanel";
+  }
+  const version = server.version ? ` ${server.version}` : "";
+  return `a Evolution${version} foi encontrada, mas recusou a chave — EVOLUTION_API_KEY precisa ser a API Key global (a mesma usada para entrar no Evolution Manager)`;
+}
+
 export async function connectionCheck(
   config: EvolutionConfig,
   fetchImpl: FetchLike = fetch,
 ): Promise<Check> {
   try {
     const { status, body } = await call(config, "/instance/connectionState", fetchImpl);
+    if (status === 401 || status === 403) {
+      return { ok: false, text: await keyRejected(config, fetchImpl) };
+    }
     if (status !== 200) return { ok: false, text: statusFailure(status) };
     const instance = asRecord(asRecord(body)?.instance) ?? asRecord(body);
     const state = String(instance?.state ?? "");
