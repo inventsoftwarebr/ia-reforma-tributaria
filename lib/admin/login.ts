@@ -22,6 +22,21 @@ export const LOGIN_REASONS: Record<string, string> = {
   sessao_expirada: "Sua sessão expirou. Entre de novo.",
 };
 
+/** Quanto a tela de login espera antes de dizer que algo travou. */
+export const LOGIN_WATCHDOG_MS = 20_000;
+
+/**
+ * Mensagem quando o login passa do prazo, conforme a etapa em que parou.
+ * "autenticando": o navegador não teve resposta do Supabase Auth.
+ * "abrindo": e-mail e senha aceitos, mas o servidor não entregou o painel.
+ */
+export const LOGIN_SLOW = {
+  autenticando:
+    'O serviço de login não respondeu em 20 segundos. Abra /api/health e veja a linha "login" — ela diz o que conferir na Vercel.',
+  abrindo:
+    'Seu e-mail e senha foram aceitos, mas o painel está demorando para abrir. Abra /api/health e veja as linhas "banco" e "tabelas".',
+} as const;
+
 /** Traduz o erro do Supabase Auth para algo que a pessoa consiga resolver. */
 export function loginErrorMessage(message: string | undefined): string {
   const text = (message ?? "").toLowerCase();

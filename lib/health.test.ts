@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { describeDatabaseError } from "./health";
+import { checkAuth, describeDatabaseError } from "./health";
+import { TimeoutError } from "./timeout";
 
 const pgError = (code: string, message = "") => Object.assign(new Error(message), { code });
 
@@ -13,7 +14,11 @@ describe("describeDatabaseError", () => {
   });
 
   it("banco que não responde", () => {
-    expect(describeDatabaseError(pgError("CONNECT_TIMEOUT"))).toMatch(/10 segundos/);
+    expect(describeDatabaseError(pgError("CONNECT_TIMEOUT"))).toMatch(/não respondeu a tempo/);
+  });
+
+  it("consulta que conecta mas nunca volta", () => {
+    expect(describeDatabaseError(new TimeoutError("banco", 12_000))).toMatch(/pooler\.supabase\.com/);
   });
 
   it("tabelas ausentes aponta o bootstrap", () => {
@@ -43,5 +48,37 @@ describe("describeDatabaseError", () => {
     const resultado = describeDatabaseError(pgError("XX000", "falhou em db.abcdef.supabase.co"));
     expect(resultado).not.toContain("abcdef");
     expect(resultado).toMatch(/XX000/);
+  });
+});
+
+describe("checkAuth", () => {
+  const URL_OK = "https://abc.supabase.co";
+  const resposta = (status: number) => async () => new Response("{}", { status });
+
+  it("ok quando o Supabase responde", async () => {
+    expect(await checkAuth(URL_OK, "sb_publishable_x", resposta(200))).toBe("ok");
+  });
+
+  it("chave recusada", async () => {
+    expect(await checkAuth(URL_OK, "errada", resposta(401))).toMatch(/chave publicável/);
+  });
+
+  it("endereço que não é do Auth", async () => {
+    expect(await checkAuth(URL_OK, "k", resposta(404))).toMatch(/respondeu 404/);
+  });
+
+  it("endereço inválido", async () => {
+    expect(await checkAuth("abc.supabase.co", "k", resposta(200))).toMatch(/não é um endereço válido/);
+  });
+
+  it("serviço que não responde", async () => {
+    const falha = async () => {
+      throw new Error("aborted");
+    };
+    expect(await checkAuth(URL_OK, "k", falha)).toMatch(/não respondeu/);
+  });
+
+  it("sem variáveis", async () => {
+    expect(await checkAuth(undefined, "k", resposta(200))).toMatch(/não verificado/);
   });
 });

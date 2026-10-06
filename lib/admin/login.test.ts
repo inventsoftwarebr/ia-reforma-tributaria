@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { LOGIN_REASONS, loginErrorMessage, safeRedirect } from "./login";
+import {
+  LOGIN_REASONS,
+  LOGIN_SLOW,
+  LOGIN_WATCHDOG_MS,
+  loginErrorMessage,
+  safeRedirect,
+} from "./login";
 
 describe("safeRedirect", () => {
   it("aceita caminho interno", () => {
@@ -20,7 +26,9 @@ describe("safeRedirect", () => {
 
 describe("mensagens de login", () => {
   it("credencial errada", () => {
-    expect(loginErrorMessage("Invalid login credentials")).toBe("E-mail ou senha inválidos.");
+    expect(loginErrorMessage("Invalid login credentials")).toBe(
+      "E-mail ou senha inválidos.",
+    );
   });
 
   it("e-mail não confirmado diz onde resolver", () => {
@@ -37,5 +45,17 @@ describe("mensagens de login", () => {
 
   it("motivo de usuário sem perfil explica o que fazer", () => {
     expect(LOGIN_REASONS.sem_perfil).toMatch(/não tem acesso ao console/);
+  });
+});
+
+describe("LOGIN_SLOW", () => {
+  it("cada etapa aponta o diagnóstico", () => {
+    expect(LOGIN_SLOW.autenticando).toMatch(/api\/health/);
+    expect(LOGIN_SLOW.abrindo).toMatch(/api\/health/);
+    expect(LOGIN_SLOW.abrindo).toMatch(/aceitos/);
+  });
+
+  it("o texto bate com o prazo real", () => {
+    expect(LOGIN_SLOW.autenticando).toContain(`${LOGIN_WATCHDOG_MS / 1000} segundos`);
   });
 });

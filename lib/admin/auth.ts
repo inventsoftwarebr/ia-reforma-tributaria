@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { profiles } from "@/db/schema";
 import { logWarn } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
+import { withTimeout } from "@/lib/timeout";
 
 /**
  * Autorização do console.
@@ -25,6 +26,11 @@ type Session =
   | { status: "no_profile"; email: string | null }
   | { status: "ok"; user: SessionUser };
 
+const AUTH_TIMEOUT_MS = 8_000;
+// Acima do connect_timeout (10s) do db/client.ts, para que o erro de conexão,
+// mais específico, apareça primeiro quando é ele a causa.
+const DB_TIMEOUT_MS = 12_000;
+
 /**
  * "Não logado" e "logado sem perfil" são situações diferentes e precisam de
  * mensagens diferentes: a segunda acontece com usuário criado antes do
@@ -33,17 +39,23 @@ type Session =
  */
 async function session(): Promise<Session> {
   const supabase = await createClient();
+  // Sem limite, Auth ou banco pendurados deixam o console "carregando" por
+  // minutos; com limite, cai em app/error.tsx, que aponta o /api/health.
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await withTimeout(supabase.auth.getUser(), AUTH_TIMEOUT_MS, "auth");
 
   if (!user) return { status: "anonymous" };
 
-  const [profile] = await db
-    .select({ role: profiles.role, email: profiles.email })
-    .from(profiles)
-    .where(eq(profiles.id, user.id))
-    .limit(1);
+  const [profile] = await withTimeout(
+    db
+      .select({ role: profiles.role, email: profiles.email })
+      .from(profiles)
+      .where(eq(profiles.id, user.id))
+      .limit(1),
+    DB_TIMEOUT_MS,
+    "banco",
+  );
 
   if (!profile) {
     logWarn("admin.login_without_profile", { userId: user.id });

@@ -37,8 +37,13 @@ export function describeDatabaseError(error: unknown): string {
   if (code === "ENOTFOUND" || message.includes("getaddrinfo")) {
     return "endereço do banco não encontrado — confira o host da DATABASE_URL";
   }
-  if (code === "CONNECT_TIMEOUT" || message.includes("timeout") || code === "ETIMEDOUT") {
-    return "o banco não respondeu em 10 segundos — use o Transaction pooler cujo endereço termina em pooler.supabase.com (porta 6543); os endereços db.<projeto>.supabase.co só funcionam em IPv6, que a Vercel não alcança";
+  if (
+    code === "CONNECT_TIMEOUT" ||
+    code === "ETIMEDOUT" ||
+    code.startsWith("TIMEOUT_") ||
+    message.includes("timeout")
+  ) {
+    return "o banco não respondeu a tempo — use o Transaction pooler cujo endereço termina em pooler.supabase.com (porta 6543); os endereços db.<projeto>.supabase.co só funcionam em IPv6, que a Vercel não alcança";
   }
   if (code === "ECONNREFUSED") return "o banco recusou a conexão — confira a porta da DATABASE_URL";
   if (code === "ENETUNREACH" || code === "EHOSTUNREACH") {
@@ -52,4 +57,39 @@ export function describeDatabaseError(error: unknown): string {
     return "o pooler do Supabase não reconheceu o usuário — confira se o usuário é postgres.<ref-do-projeto>";
   }
   return `falha ao conectar${code ? ` (código ${code})` : ""}`;
+}
+
+/**
+ * O login do console fala direto com o Supabase Auth a partir do navegador.
+ * URL ou chave publicável erradas na Vercel deixam o botão "Entrando…" sem
+ * resposta clara — aqui o mesmo pedido é feito pelo servidor, com prazo.
+ */
+export async function checkAuth(
+  url: string | undefined,
+  key: string | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  if (!url || !key) return "não verificado — faltam NEXT_PUBLIC_SUPABASE_URL ou a chave publicável";
+
+  let endpoint: string;
+  try {
+    endpoint = new URL("/auth/v1/settings", url).toString();
+  } catch {
+    return "NEXT_PUBLIC_SUPABASE_URL não é um endereço válido — copie de Project Settings → API";
+  }
+
+  try {
+    const response = await fetchImpl(endpoint, {
+      headers: { apikey: key },
+      signal: AbortSignal.timeout(8_000),
+      cache: "no-store",
+    });
+    if (response.ok) return "ok";
+    if (response.status === 401 || response.status === 403) {
+      return "o Supabase recusou a chave publicável — confira NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY";
+    }
+    return `o Supabase respondeu ${response.status} — confira se NEXT_PUBLIC_SUPABASE_URL é https://<projeto>.supabase.co, sem nada depois`;
+  } catch {
+    return "o serviço de login do Supabase não respondeu em 8 segundos — confira NEXT_PUBLIC_SUPABASE_URL e se o projeto não está pausado";
+  }
 }

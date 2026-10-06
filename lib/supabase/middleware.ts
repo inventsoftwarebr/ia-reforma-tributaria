@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { withTimeout } from "@/lib/timeout";
 
 /**
  * Refresh do JWT a cada request e proteção do console.
@@ -31,11 +32,19 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const isConsole = request.nextUrl.pathname.startsWith("/admin");
+
+  let user: unknown = null;
+  try {
+    ({
+      data: { user },
+    } = await withTimeout(supabase.auth.getUser(), 8_000, "auth"));
+  } catch {
+    // Auth fora do ar não pode travar o site inteiro. No console, a checagem
+    // do layout tenta de novo e, se falhar, mostra a tela de erro com o
+    // caminho do diagnóstico — melhor que mandar para o login sem motivo.
+    return response;
+  }
 
   if (isConsole && !user) {
     const login = request.nextUrl.clone();
