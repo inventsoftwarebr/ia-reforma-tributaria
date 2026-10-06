@@ -23,7 +23,9 @@ function getDb(): DB {
   const url = process.env.DATABASE_URL;
   const problem = validateDatabaseUrl(url);
   if (problem || !url) throw new Error(problem ?? "DATABASE_URL ausente.");
-  client = postgres(url, { max: 1, prepare: false });
+  // connect_timeout: banco inalcançável vira erro visível em 10s. O padrão do
+  // postgres-js é 30s, e somado a retentativas parecia uma tela travada.
+  client = postgres(url, { max: 1, prepare: false, connect_timeout: 10 });
   database = drizzle(client, { schema });
   return database;
 }

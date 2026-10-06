@@ -170,6 +170,10 @@ conferindo RLS, idempotência e a busca com filtro de vigência.
 
 ## Armadilhas
 
+- **"Login fica em Entrando… ou o console dá erro."** Abra `/api/health`: diz se é banco,
+  variável ou tabela. Usuário sem linha em `profiles` volta ao login com `?erro=sem_perfil`.
+  Erro em `app/admin/layout.tsx` só é pego por `app/error.tsx` (nível de cima), não pelo
+  `app/admin/error.tsx`.
 - **"O agente recusa tudo."** A base está vazia ou sem vigência válida. Ver `/admin/base`.
 - **"Respondeu fora de contexto."** Mensagem não-texto chegou vazia. Ver §7.
 - **"Respondeu três vezes."** Debounce ou lock. Ver §8.

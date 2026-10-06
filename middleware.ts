@@ -9,6 +9,6 @@ export const config = {
   // Fora do middleware: rotas de webhook e de fila (autenticadas por segredo
   // próprio), arquivos estáticos e imagens.
   matcher: [
-    "/((?!api/whatsapp|api/jobs|api/cron|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/whatsapp|api/jobs|api/cron|api/health|_next/static|_next/image|favicon.ico).*)",
   ],
 };

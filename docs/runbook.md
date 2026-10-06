@@ -47,6 +47,29 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 
 Há uma janela de segundos em que mensagens recebem 401. Faça fora do horário comercial.
 
+## Diagnóstico rápido
+
+Abra `https://<domínio>/api/health` no navegador. Mostra, em português e sem expor segredo:
+variáveis faltando, se o banco conecta (e por que não) e se as tabelas existem.
+
+## "Fica em Entrando… e não entra" / tela de erro no console
+
+1. `/api/health` — se `banco` não for `ok`, a mensagem diz o que corrigir na `DATABASE_URL`.
+2. Se o banco está ok, confira o usuário no SQL Editor do Supabase:
+
+   ```sql
+   select u.email, u.email_confirmed_at is not null as confirmado, p.role
+     from auth.users u left join public.profiles p on p.id = u.id;
+   ```
+
+   `role` vazio = usuário criado antes do bootstrap, sem perfil. Libera (idempotente):
+
+   ```sql
+   insert into public.profiles (id, email, role)
+   select id, email, 'admin' from auth.users where email = 'EMAIL-AQUI'
+   on conflict (id) do update set role = 'admin';
+   ```
+
 ## Investigar "o bot não respondeu"
 
 Na ordem:

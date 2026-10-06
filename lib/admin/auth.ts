@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { profiles } from "@/db/schema";
+import { logWarn } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -19,13 +20,24 @@ export interface SessionUser {
   role: "admin" | "agent";
 }
 
-export async function currentUser(): Promise<SessionUser | null> {
+type Session =
+  | { status: "anonymous" }
+  | { status: "no_profile"; email: string | null }
+  | { status: "ok"; user: SessionUser };
+
+/**
+ * "Não logado" e "logado sem perfil" são situações diferentes e precisam de
+ * mensagens diferentes: a segunda acontece com usuário criado antes do
+ * bootstrap do banco, e a pessoa só vê a tela de login de novo se ninguém
+ * disser o motivo.
+ */
+async function session(): Promise<Session> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return null;
+  if (!user) return { status: "anonymous" };
 
   const [profile] = await db
     .select({ role: profiles.role, email: profiles.email })
@@ -33,15 +45,27 @@ export async function currentUser(): Promise<SessionUser | null> {
     .where(eq(profiles.id, user.id))
     .limit(1);
 
-  if (!profile) return null;
+  if (!profile) {
+    logWarn("admin.login_without_profile", { userId: user.id });
+    return { status: "no_profile", email: user.email ?? null };
+  }
 
-  return { id: user.id, email: profile.email ?? user.email ?? null, role: profile.role };
+  return {
+    status: "ok",
+    user: { id: user.id, email: profile.email ?? user.email ?? null, role: profile.role },
+  };
+}
+
+export async function currentUser(): Promise<SessionUser | null> {
+  const current = await session();
+  return current.status === "ok" ? current.user : null;
 }
 
 export async function requireAgent(): Promise<SessionUser> {
-  const user = await currentUser();
-  if (!user) redirect("/entrar?redirect=/admin");
-  return user;
+  const current = await session();
+  if (current.status === "anonymous") redirect("/entrar?redirect=/admin");
+  if (current.status === "no_profile") redirect("/entrar?erro=sem_perfil");
+  return current.user;
 }
 
 export async function requireAdmin(): Promise<SessionUser> {
