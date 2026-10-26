@@ -25,14 +25,14 @@ export const AI_DISCLAIMER =
   "Minhas respostas são geradas por IA e podem conter erros — vale confirmar com seu contador.";
 
 /** Percentual, valor em real ou fração: o que precisa de respaldo. */
-const NUMERIC_CLAIM = /(\d+(?:[.,]\d+)?\s*%)|(R\$\s*\d)|(\d+\/\d+\s+(?:da|das|do|dos)\s)/i;
+const NUMERIC_CLAIM =
+  /(\d+(?:[.,]\d+)?\s*%)|(R\$\s*\d)|(\d+\/\d+\s+(?:da|das|do|dos)\s)/i;
 
 /**
  * Identificador de norma dentro do texto: "LC 214/2025", "EC 132/2023",
  * "Lei Complementar nº 214/2025", "IN RFB 2.161/2023".
  */
-const NORM_PATTERN =
-  String.raw`\b(EC|LC|IN(?:\s+RFB)?|MP|ADE|Emenda Constitucional|Lei Complementar|Lei|Decreto|Resolução)\s*(?:n[º°o]?\.?\s*)?(\d[\d.]*\/\d{4})`;
+const NORM_PATTERN = String.raw`\b(EC|LC|IN(?:\s+RFB)?|MP|ADE|Emenda Constitucional|Lei Complementar|Lei|Decreto|Resolução)\s*(?:n[º°o]?\.?\s*)?(\d[\d.]*\/\d{4})`;
 
 /**
  * Um regex por chamada: objeto global compartilhado carrega `lastIndex` entre
@@ -86,6 +86,31 @@ export function hasNumericClaim(text: string): boolean {
   return NUMERIC_CLAIM.test(text);
 }
 
+/** Números de afirmações com % ou R$ ("60%" → "60", "R$ 1.200,50" → "1200,50"). */
+function claimedNumbers(text: string): string[] {
+  const numbers: string[] = [];
+  const pattern = /(\d+(?:[.,]\d+)*)\s*%|R\$\s*(\d+(?:[.,]\d+)*)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    numbers.push((match[1] ?? match[2] ?? "").replace(/\./g, ""));
+  }
+  return numbers.filter(Boolean);
+}
+
+/**
+ * Todo número da resposta aparece, como número inteiro e não pedaço de outro,
+ * no texto recuperado da base? É o caso de uma tabela técnica ("Redução: 60")
+ * sustentando "redução de 60%".
+ */
+export function numbersBackedBy(text: string, support: string): boolean {
+  const numbers = claimedNumbers(text);
+  if (numbers.length === 0 || !support) return false;
+  const haystack = support.replace(/(\d)\.(?=\d{3}\b)/g, "$1");
+  return numbers.every((number) =>
+    new RegExp(`(^|[^\\d.,])${number.replace(/[.,]/g, "[.,]")}($|[^\\d])`).test(haystack),
+  );
+}
+
 function hostAllowed(host: string): boolean {
   return ALLOWED_LINK_HOSTS.includes(host.toLowerCase());
 }
@@ -107,9 +132,7 @@ export function stripDisallowedLinks(text: string): { text: string; removed: str
 }
 
 export type RefusalReason =
-  | "empty_answer"
-  | "numeric_claim_without_support"
-  | "fabricated_citation";
+  "empty_answer" | "numeric_claim_without_support" | "fabricated_citation";
 
 export type GuardrailVerdict =
   | { ok: true; text: string; citedNorms: string[] }
@@ -121,6 +144,8 @@ export interface GuardrailInput {
   usedScheduleTool: boolean;
   /** Normas dos trechos efetivamente recuperados, já normalizadas. */
   availableNorms: string[];
+  /** Texto dos trechos oficiais e da Invent recuperados: sustenta números. */
+  supportText?: string;
 }
 
 export function applyGuardrails(input: GuardrailInput): GuardrailVerdict {
@@ -140,7 +165,12 @@ export function applyGuardrails(input: GuardrailInput): GuardrailVerdict {
     return { ok: false, reason: "fabricated_citation", text: REFUSAL_TEXT, citedNorms };
   }
 
-  if (hasNumericClaim(text) && !input.usedScheduleTool && citedNorms.length === 0) {
+  if (
+    hasNumericClaim(text) &&
+    !input.usedScheduleTool &&
+    citedNorms.length === 0 &&
+    !numbersBackedBy(text, input.supportText ?? "")
+  ) {
     return {
       ok: false,
       reason: "numeric_claim_without_support",

@@ -39,7 +39,7 @@ export function AddSourceForm() {
         {(
           [
             ["url", "Link de um site"],
-            ["file", "Arquivo (PDF, Word, página salva)"],
+            ["file", "Arquivo (PDF, Word, planilha, página salva)"],
             ["text", "Colar texto"],
           ] as const
         ).map(([value, label]) => (
@@ -72,12 +72,15 @@ export function AddSourceForm() {
 
       {mode === "file" ? (
         <label>
-          <span className="muted">Arquivo (até 4 MB)</span>
+          <span className="muted">
+            Arquivo (até 4 MB). Em planilha, cada linha vira um trecho que a IA cita —
+            ideal para tabelas como a de cClassTrib e CST.
+          </span>
           <input
             name="file"
             type="file"
             required
-            accept=".pdf,.docx,.htm,.html,.txt,.md"
+            accept=".pdf,.docx,.xlsx,.csv,.tsv,.htm,.html,.txt,.md"
           />
         </label>
       ) : null}

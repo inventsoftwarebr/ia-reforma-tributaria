@@ -154,6 +154,10 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
         text: toWhatsAppFormatting(result.text),
         usedScheduleTool,
         availableNorms: allowedNorms(collected, usedScheduleTool),
+        supportText: collected
+          .filter((chunk) => chunk.authority !== "secundaria")
+          .map((chunk) => chunk.content)
+          .join("\n"),
       });
 
       if (!verdict.ok) {

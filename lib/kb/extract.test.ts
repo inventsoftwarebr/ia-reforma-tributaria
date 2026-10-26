@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { chunkLegalText } from "./chunk";
-import { decodeBytes, detectCharset, fileKind, htmlToText } from "./extract";
+import { chunkLegalText, chunkMarkdown } from "./chunk";
+import {
+  decodeBytes,
+  detectCharset,
+  fileKind,
+  htmlToText,
+  isTableKind,
+  parseCsv,
+  tableToMarkdown,
+} from "./extract";
 
 // Trecho no formato do Planalto: windows-1252, artigo partido no código-fonte,
 // redação revogada riscada e entidades HTML.
@@ -80,6 +88,54 @@ describe("fileKind", () => {
     expect(fileKind("apresentacao.docx")).toBe("docx");
     expect(fileKind("lcp214.htm")).toBe("html");
     expect(fileKind("faq.md")).toBe("text");
-    expect(fileKind("planilha.xlsx")).toBeNull();
+    expect(fileKind("apresentacao.pptx")).toBeNull();
+  });
+});
+
+describe("planilhas", () => {
+  it("CSV com ponto e vírgula, aspas e acento", () => {
+    const rows = parseCsv(
+      'cClassTrib;Descrição;CST\n000001;"Tributação integral; regra geral";000\n',
+    );
+    expect(rows).toEqual([
+      ["cClassTrib", "Descrição", "CST"],
+      ["000001", "Tributação integral; regra geral", "000"],
+    ]);
+  });
+
+  it("cada linha vira uma seção citável, com o cabeçalho em cada valor", () => {
+    const text = tableToMarkdown([
+      {
+        name: "cClassTrib",
+        rows: [
+          ["Tabela de classificação", null, null],
+          ["cClassTrib", "Descrição", "CST"],
+          ["000001", "Situações tributadas integralmente", "000"],
+          [null, null, null],
+          ["200001", "Redução de alíquota", "200"],
+        ],
+      },
+    ]);
+    const chunks = chunkMarkdown(text, { minChars: 10 });
+    expect(chunks.map((chunk) => chunk.heading)).toEqual(
+      expect.arrayContaining([
+        "000001 — Situações tributadas integralmente",
+        "200001 — Redução de alíquota",
+      ]),
+    );
+    expect(text).toContain("CST: 200");
+  });
+
+  it("planilha vazia é recusada com motivo", () => {
+    expect(() => tableToMarkdown([{ name: "vazia", rows: [[null]] }])).toThrow(
+      /sem|não tem/,
+    );
+  });
+
+  it("reconhece os formatos de planilha", () => {
+    expect(fileKind("cclasstrib.xlsx")).toBe("xlsx");
+    expect(fileKind("cst.csv")).toBe("csv");
+    expect(isTableKind(fileKind("cst.csv"))).toBe(true);
+    expect(isTableKind(fileKind("lei.pdf"))).toBe(false);
   });
 });

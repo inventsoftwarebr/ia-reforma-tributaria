@@ -6,7 +6,7 @@ import { z } from "zod";
 import { db } from "@/db/client";
 import { kbSources } from "@/db/schema";
 import { slugify, type IngestStart, type IngestStep } from "@/lib/kb/console";
-import { fileKind, fileToText } from "@/lib/kb/extract";
+import { fileKind, fileToText, isTableKind } from "@/lib/kb/extract";
 import {
   EmbeddingBusyError,
   EmbeddingQuotaError,
@@ -105,6 +105,7 @@ export async function addSource(formData: FormData): Promise<IngestStart> {
 
     let text: string;
     let url = input.url || undefined;
+    let tableFile = false;
     if (input.mode === "file") {
       const file = formData.get("file");
       if (!(file instanceof File) || file.size === 0) {
@@ -117,12 +118,15 @@ export async function addSource(formData: FormData): Promise<IngestStart> {
             "arquivo maior que 4 MB — para lei do Planalto, use a importação por link",
         };
       }
-      if (!fileKind(file.name, file.type)) {
+      const kind = fileKind(file.name, file.type);
+      if (!kind && !file.name.toLowerCase().endsWith(".xls")) {
         return {
           ok: false,
-          error: "envie PDF, Word (.docx), página salva (.html) ou texto (.txt, .md)",
+          error:
+            "envie PDF, Word (.docx), planilha (.xlsx, .csv), página salva (.html) ou texto (.txt, .md)",
         };
       }
+      tableFile = isTableKind(kind);
       text = await fileToText(
         file.name,
         new Uint8Array(await file.arrayBuffer()),
@@ -153,7 +157,12 @@ export async function addSource(formData: FormData): Promise<IngestStart> {
       citationLabel: input.citationLabel,
       kind: input.kind,
       authority: input.authority,
-      shape: input.shape === "auto" ? shapeForKind(input.kind) : input.shape,
+      // Planilha é sempre uma seção por linha, qualquer que seja o tipo escolhido.
+      shape: tableFile
+        ? "markdown"
+        : input.shape === "auto"
+          ? shapeForKind(input.kind)
+          : input.shape,
       url,
       publisher: input.publisher || undefined,
       effectiveFrom: input.effectiveFrom,

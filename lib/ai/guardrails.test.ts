@@ -6,6 +6,7 @@ import {
   hasNumericClaim,
   isOptOutRequest,
   normalizeNormReference,
+  numbersBackedBy,
   stripDisallowedLinks,
 } from "./guardrails";
 
@@ -38,7 +39,8 @@ describe("referência de norma", () => {
   });
 
   it("extrai todas as normas de um texto, sem repetir", () => {
-    const texto = "Ver (*LC 214/2025, art. 12*) e (*EC 132/2023*); a LC 214/2025 também trata disso.";
+    const texto =
+      "Ver (*LC 214/2025, art. 12*) e (*EC 132/2023*); a LC 214/2025 também trata disso.";
     expect(extractNormReferences(texto).sort()).toEqual(["ec 132/2023", "lc 214/2025"]);
   });
 });
@@ -51,21 +53,32 @@ describe("links", () => {
   });
 
   it("remove domínio não autorizado e o que só imita o da Invent", () => {
-    expect(stripDisallowedLinks("olha https://blogaleatorio.com/reforma").removed).toHaveLength(1);
-    expect(stripDisallowedLinks("https://inventsoftware.com.br.fake.io/x").removed).toHaveLength(1);
+    expect(
+      stripDisallowedLinks("olha https://blogaleatorio.com/reforma").removed,
+    ).toHaveLength(1);
+    expect(
+      stripDisallowedLinks("https://inventsoftware.com.br.fake.io/x").removed,
+    ).toHaveLength(1);
   });
 });
 
 describe("guard-rails da resposta", () => {
   it("recusa número sem respaldo nenhum", () => {
-    const verdict = applyGuardrails({ ...BASE, text: "A alíquota total vai ficar em 27,5%." });
+    const verdict = applyGuardrails({
+      ...BASE,
+      text: "A alíquota total vai ficar em 27,5%.",
+    });
     expect(verdict.ok).toBe(false);
     expect(verdict.text).toBe(REFUSAL_TEXT);
   });
 
   it("aceita número vindo do cronograma", () => {
     expect(
-      applyGuardrails({ ...BASE, text: "Em 2026 a CBS fica em 0,9%.", usedScheduleTool: true }).ok,
+      applyGuardrails({
+        ...BASE,
+        text: "Em 2026 a CBS fica em 0,9%.",
+        usedScheduleTool: true,
+      }).ok,
     ).toBe(true);
   });
 
@@ -99,7 +112,9 @@ describe("guard-rails da resposta", () => {
   });
 
   it("aceita resposta sem número e sem citação", () => {
-    expect(applyGuardrails({ ...BASE, text: "O IBS substitui ICMS e ISS." }).ok).toBe(true);
+    expect(applyGuardrails({ ...BASE, text: "O IBS substitui ICMS e ISS." }).ok).toBe(
+      true,
+    );
   });
 
   it("resposta vazia cai na recusa", () => {
@@ -109,7 +124,10 @@ describe("guard-rails da resposta", () => {
   });
 
   it("remove link proibido antes de validar", () => {
-    const verdict = applyGuardrails({ ...BASE, text: "Veja em https://naoautorizado.com/x" });
+    const verdict = applyGuardrails({
+      ...BASE,
+      text: "Veja em https://naoautorizado.com/x",
+    });
     expect(verdict.ok).toBe(true);
     expect(verdict.text).not.toContain("naoautorizado");
   });
@@ -126,5 +144,37 @@ describe("opt-out", () => {
   it("não confunde com pergunta que contém a palavra", () => {
     expect(isOptOutRequest("posso parar de recolher PIS em 2027?")).toBe(false);
     expect(isOptOutRequest("o que muda para quem vai sair do Simples?")).toBe(false);
+  });
+});
+
+describe("número sustentado por tabela recuperada", () => {
+  const tabela = "cClassTrib: 200003\nDescrição: Vendas de alimentos\nRedução: 60";
+
+  it("aceita o percentual que está literalmente no trecho", () => {
+    const verdict = applyGuardrails({
+      text: "O cClassTrib 200003 tem redução de 60% nas alíquotas.",
+      usedScheduleTool: false,
+      availableNorms: [],
+      supportText: tabela,
+    });
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("recusa percentual que não está no trecho", () => {
+    const verdict = applyGuardrails({
+      text: "O cClassTrib 200003 tem redução de 40% nas alíquotas.",
+      usedScheduleTool: false,
+      availableNorms: [],
+      supportText: tabela,
+    });
+    expect(verdict.ok).toBe(false);
+  });
+
+  it("número pedaço de outro não conta (6 não sustenta por estar em 60)", () => {
+    expect(numbersBackedBy("alíquota de 6%", tabela)).toBe(false);
+  });
+
+  it("valor em reais com milhar", () => {
+    expect(numbersBackedBy("limite de R$ 1.200,50", "limite: 1.200,50")).toBe(true);
   });
 });
