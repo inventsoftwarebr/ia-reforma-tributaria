@@ -7,6 +7,11 @@ import { db } from "@/db/client";
 import { conversations, jobFailures, kbSources, promptVersions } from "@/db/schema";
 import { appUrl, serverEnv } from "@/lib/env";
 import { logInfo } from "@/lib/observability/logger";
+import {
+  type SimulateResult,
+  simulateInputSchema,
+  simulateTurn,
+} from "@/lib/simulator/run";
 import { configProblem, configureWebhook, webhookCheck } from "@/lib/whatsapp/evolution-admin";
 import { evolutionConfig, webhookTarget } from "@/lib/whatsapp/status";
 import { requireAdmin, requireAgent } from "./auth";
@@ -142,4 +147,11 @@ export async function configureWhatsAppWebhook(formData: FormData): Promise<neve
   logInfo("admin.whatsapp_webhook", { ok: resultado.ok, by: user.id });
   const query = new URLSearchParams({ resultado: resultado.ok ? "ok" : "erro", msg: resultado.text });
   redirect(`/admin/whatsapp?${query.toString()}`);
+}
+
+/** Simulador do console: qualquer atendente pode testar; nada é gravado. */
+export async function simulateQuestion(payload: unknown): Promise<SimulateResult> {
+  const user = await requireAgent();
+  const input = simulateInputSchema.parse(payload);
+  return simulateTurn(input, user.id);
 }

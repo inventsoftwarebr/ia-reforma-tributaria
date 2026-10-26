@@ -271,3 +271,87 @@ code {
   border-radius: 6px;
   padding: 0.05rem 0.3rem;
 }
+
+/* Simulador do console: conversa no formato do WhatsApp. */
+.sim {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.sim-chat {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 1rem;
+  min-height: 320px;
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.sim-row {
+  display: flex;
+}
+.sim-row-user {
+  justify-content: flex-end;
+}
+.sim-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: min(85%, 640px);
+}
+.sim-bubble {
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+.sim-user {
+  background: var(--brand);
+  color: #fff;
+  max-width: min(85%, 640px);
+}
+.sim-bot {
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.sim-details {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.sim-details summary {
+  cursor: pointer;
+}
+.sim-details ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+}
+.sim-empty {
+  margin: auto 0;
+  text-align: center;
+}
+.sim-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+.sim-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.sim-form textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+.sim-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}

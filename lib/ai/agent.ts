@@ -23,6 +23,16 @@ export interface AgentInput {
   question: string;
   history: { role: "user" | "assistant"; content: string }[];
   state: Omit<PromptState, "today">;
+  /**
+   * Simulador do console: mesma busca, prompt, modelo e guard-rails, mas as
+   * ferramentas não gravam nada (conversa, simulador aceito, lead no HubSpot).
+   */
+  sandbox?: boolean;
+}
+
+export interface ToolCallSummary {
+  name: string;
+  input: unknown;
 }
 
 export interface AgentResult {
@@ -38,6 +48,9 @@ export interface AgentResult {
   citedChunkIds: string[];
   /** A pessoa pediu especialista neste turno: o lead deve ir ao HubSpot já. */
   handoffRequested: boolean;
+  /** Fontes dos trechos recuperados (sem repetição), para conferência. */
+  sources: string[];
+  toolCalls: ToolCallSummary[];
 }
 
 const SCHEDULE_TOOL = "cronograma_reforma";
@@ -99,6 +112,7 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
     state: { ...input.state, today: brazilDate(new Date()) },
   });
 
+  const persist = !input.sandbox;
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= RETRIES; attempt += 1) {
@@ -113,8 +127,8 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
         tools: {
           buscar_base: buildBuscarBaseTool(collected),
           [SCHEDULE_TOOL]: cronogramaReforma,
-          oferecer_simulador: buildSimuladorTool(input.conversationId),
-          [HANDOFF_TOOL]: buildHandoffTool(input.conversationId),
+          oferecer_simulador: buildSimuladorTool(input.conversationId, { persist }),
+          [HANDOFF_TOOL]: buildHandoffTool(input.conversationId, { persist }),
         },
         stopWhen: stepCountIs(6),
         maxOutputTokens: env.AI_MAX_TOKENS_PER_TURN,
@@ -161,11 +175,18 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
         retrievedCount: collected.length,
         citedChunkIds: [...new Set(citedChunkIds)],
         handoffRequested: calledTool(result.steps, HANDOFF_TOOL),
+        sources: [...new Set(collected.map((chunk) => chunk.citationLabel))],
+        toolCalls: result.steps.flatMap((step) =>
+          step.toolCalls.map((call) => ({ name: call.toolName, input: call.input })),
+        ),
       };
     } catch (error) {
       lastError = error;
       if (attempt < RETRIES) {
-        logWarn("agent.retrying", { conversationId: input.conversationId, attempt: attempt + 1 });
+        logWarn("agent.retrying", {
+          conversationId: input.conversationId,
+          attempt: attempt + 1,
+        });
         await new Promise((resolve) => setTimeout(resolve, 800));
       }
     }

@@ -317,3 +317,11 @@ export async function lastMessages(): Promise<{ recebida: Date | null; enviada: 
   const toDate = (value: Date | string | null | undefined) => (value ? new Date(value) : null);
   return { recebida: toDate(row?.recebida), enviada: toDate(row?.enviada) };
 }
+
+export async function activeSourceCount(): Promise<number> {
+  const [row] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(kbSources)
+    .where(eq(kbSources.status, "active"));
+  return Number(row?.total ?? 0);
+}
