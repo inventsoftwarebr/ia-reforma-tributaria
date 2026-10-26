@@ -137,6 +137,10 @@ export interface ServerIdentity {
   /** O domínio pede usuário e senha antes de chegar à Evolution (EasyPanel). */
   basicAuth: boolean;
   html: boolean;
+  /** Proteção na frente do servidor (Cloudflare) barrando a Vercel. */
+  cloudflare: boolean;
+  /** Resumo técnico da resposta, para quem administra o servidor. */
+  detail: string;
 }
 
 /**
@@ -164,15 +168,34 @@ export async function identifyServer(
       body = null;
     }
     const message = String(body?.message ?? "");
+    const serverHeader = response.headers.get("server") ?? "";
+    const cloudflare =
+      /cloudflare/i.test(serverHeader) ||
+      response.headers.has("cf-ray") ||
+      /cloudflare|attention required|just a moment/i.test(text.slice(0, 2000));
+    const preview = text.replace(/\s+/g, " ").trim().slice(0, 80);
     return {
       evolution: /evolution/i.test(message),
       version: typeof body?.version === "string" ? body.version : "",
       status: response.status,
       basicAuth: /basic/i.test(response.headers.get("www-authenticate") ?? ""),
       html: contentType.includes("text/html") || /^\s*</.test(text),
+      cloudflare,
+      detail: `resposta ${response.status}${serverHeader ? `, servidor "${serverHeader}"` : ""}${
+        preview ? `, início: "${preview}"` : ""
+      }`,
     };
-  } catch {
-    return { evolution: false, version: "", status: 0, basicAuth: false, html: false };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      evolution: false,
+      version: "",
+      status: 0,
+      basicAuth: false,
+      html: false,
+      cloudflare: false,
+      detail: `sem resposta (${reason.slice(0, 80)})`,
+    };
   }
 }
 
@@ -182,16 +205,19 @@ export function explainRejection(address: string, server: ServerIdentity): strin
     const version = server.version ? ` ${server.version}` : "";
     return `a Evolution${version} em ${address} foi encontrada, mas recusou a chave — EVOLUTION_API_KEY precisa ser a API Key global (AUTHENTICATION_API_KEY no EasyPanel, a mesma usada para entrar no Evolution Manager)`;
   }
+  if (server.cloudflare && !server.evolution) {
+    return `o Cloudflare na frente de ${address} está barrando o acesso vindo da Vercel (no navegador funciona, porque você passa pela verificação). Peça para liberar esse subdomínio no Cloudflare: desligar "Bot Fight Mode"/desafio para ele, ou criar regra que permita as chamadas da API. Detalhe técnico: ${server.detail}`;
+  }
   if (server.basicAuth) {
     return `o domínio ${address} pede usuário e senha antes de chegar à Evolution (proteção do EasyPanel). Desligue essa proteção no domínio da Evolution no EasyPanel, ou coloque os dois no link: https://usuario:senha@${address}`;
   }
   if (server.html) {
-    return `${address} abriu uma página, não a API da Evolution — parece o painel do EasyPanel ou o Manager. Use o domínio da Evolution (aba Domains do serviço no EasyPanel), sem /manager`;
+    return `${address} abriu uma página, não a API da Evolution — parece o painel do EasyPanel, o Manager ou um firewall. Detalhe técnico: ${server.detail}`;
   }
   if (server.status === 0) {
     return `${address} não respondeu — confira o endereço e se a VPS está no ar`;
   }
-  return `${address} respondeu ${server.status} e não se identificou como Evolution API — use o domínio da Evolution (aba Domains do serviço no EasyPanel), sem /manager`;
+  return `${address} recusou o acesso e não se identificou como Evolution API. Detalhe técnico para quem administra o servidor: ${server.detail}`;
 }
 
 async function keyRejected(

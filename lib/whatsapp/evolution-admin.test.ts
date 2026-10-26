@@ -298,3 +298,24 @@ describe("splitBasicAuth", () => {
     expect(auth).toMatch(/^Basic /);
   });
 });
+
+describe("bloqueio do Cloudflare", () => {
+  it("reconhece o desafio do Cloudflare barrando a Vercel", async () => {
+    const fake: typeof fetch = async () =>
+      new Response("<html><title>Just a moment...</title></html>", {
+        status: 403,
+        headers: { server: "cloudflare", "content-type": "text/html", "cf-ray": "abc" },
+      });
+    const text = (await connectionCheck(CONFIG, fake)).text;
+    expect(text).toMatch(/Cloudflare/);
+    expect(text).toMatch(/resposta 403, servidor "cloudflare"/);
+  });
+
+  it("recusa sem pista mostra o detalhe técnico", async () => {
+    const fake: typeof fetch = async () =>
+      new Response("Forbidden by policy", { status: 403, headers: { server: "nginx" } });
+    expect((await connectionCheck(CONFIG, fake)).text).toMatch(
+      /resposta 403, servidor "nginx", início: "Forbidden by policy"/,
+    );
+  });
+});
