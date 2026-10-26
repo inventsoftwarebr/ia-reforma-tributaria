@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { allowedInstances, serverEnv } from "@/lib/env";
 import { logWarn } from "@/lib/observability/logger";
+import { splitBasicAuth } from "./evolution-admin";
 import { parseEvolutionWebhook } from "./normalize";
 import type { ParseResult, SendTextResult, WhatsAppGateway } from "./types";
 
@@ -19,8 +20,12 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 function requestUrl(path: string): string {
-  const base = serverEnv().EVOLUTION_API_URL.replace(/\/+$/, "");
-  return `${base}${path}`;
+  return `${splitBasicAuth(serverEnv().EVOLUTION_API_URL).url}${path}`;
+}
+
+function basicAuthHeader(): Record<string, string> {
+  const { authorization } = splitBasicAuth(serverEnv().EVOLUTION_API_URL);
+  return authorization ? { authorization } : {};
 }
 
 async function attempt(path: string, body: unknown): Promise<unknown> {
@@ -29,6 +34,7 @@ async function attempt(path: string, body: unknown): Promise<unknown> {
     headers: {
       "content-type": "application/json",
       apikey: serverEnv().EVOLUTION_API_KEY,
+      ...basicAuthHeader(),
     },
     body: JSON.stringify(body),
     // A Evolution roda na VPS; sem timeout uma instância travada prende o worker.

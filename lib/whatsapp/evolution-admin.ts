@@ -37,8 +37,46 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/**
+ * Domínio protegido por senha no EasyPanel ("Basic Auth"): aceita
+ * https://usuario:senha@host em EVOLUTION_API_URL. O fetch não aceita
+ * credencial dentro da URL, então ela vira cabeçalho Authorization.
+ */
+export function splitBasicAuth(raw: string): { url: string; authorization?: string } {
+  try {
+    const url = new URL(raw.trim());
+    if (!url.username && !url.password) return { url: raw.trim().replace(/\/+$/, "") };
+    const credentials = `${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`;
+    url.username = "";
+    url.password = "";
+    return {
+      url: url.toString().replace(/\/+$/, ""),
+      authorization: `Basic ${Buffer.from(credentials).toString("base64")}`,
+    };
+  } catch {
+    return { url: raw.trim().replace(/\/+$/, "") };
+  }
+}
+
+/** O endereço configurado, sem usuário e senha, para mostrar na tela. */
+export function displayAddress(raw: string): string {
+  try {
+    const url = new URL(splitBasicAuth(raw).url);
+    const path = url.pathname === "/" ? "" : url.pathname;
+    const protegido = /@/.test(raw) ? " (com usuário e senha)" : "";
+    return `${url.host}${path}${protegido}`;
+  } catch {
+    return "(endereço inválido)";
+  }
+}
+
 function endpoint(config: EvolutionConfig, path: string): string {
-  return `${config.baseUrl.replace(/\/+$/, "")}${path}/${encodeURIComponent(config.instance)}`;
+  return `${splitBasicAuth(config.baseUrl).url}${path}/${encodeURIComponent(config.instance)}`;
+}
+
+function authHeaders(config: EvolutionConfig): Record<string, string> {
+  const { authorization } = splitBasicAuth(config.baseUrl);
+  return authorization ? { authorization } : {};
 }
 
 async function call(
@@ -49,7 +87,11 @@ async function call(
 ): Promise<{ status: number; body: unknown }> {
   const response = await fetchImpl(endpoint(config, path), {
     method: init.method ?? "GET",
-    headers: { apikey: config.apiKey, "content-type": "application/json" },
+    headers: {
+      apikey: config.apiKey,
+      "content-type": "application/json",
+      ...authHeaders(config),
+    },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
     signal: AbortSignal.timeout(10_000),
     cache: "no-store",
@@ -64,7 +106,7 @@ export function configProblem(config: EvolutionConfig): string | null {
   if (values.some((value) => !value || value.trim().toLowerCase() === "pendente")) {
     return "variáveis EVOLUTION_* ainda não preenchidas na Vercel";
   }
-  if (!/^https?:\/\//.test(config.baseUrl)) {
+  if (!/^https?:\/\//.test(config.baseUrl.trim())) {
     return "EVOLUTION_API_URL precisa começar com https:// (endereço da Evolution, sem /manager)";
   }
   return null;
@@ -88,29 +130,68 @@ function statusFailure(status: number): string {
   return `a Evolution respondeu ${status}`;
 }
 
+export interface ServerIdentity {
+  evolution: boolean;
+  version: string;
+  status: number;
+  /** O domínio pede usuário e senha antes de chegar à Evolution (EasyPanel). */
+  basicAuth: boolean;
+  html: boolean;
+}
+
 /**
  * A raiz da Evolution responde sem chave ("Welcome to the Evolution API"). Com
  * isso dá para separar "chave errada" de "endereço que nem é a Evolution" (o
- * Manager, o painel do EasyPanel), que também podem responder 401.
+ * Manager, o painel do EasyPanel) e de "domínio com senha do EasyPanel".
  */
 export async function identifyServer(
   baseUrl: string,
   fetchImpl: FetchLike = fetch,
-): Promise<{ evolution: boolean; version: string }> {
+): Promise<ServerIdentity> {
+  const { url, authorization } = splitBasicAuth(baseUrl);
   try {
-    const response = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/`, {
+    const response = await fetchImpl(`${url}/`, {
+      headers: authorization ? { authorization } : {},
       signal: AbortSignal.timeout(10_000),
       cache: "no-store",
     });
-    const body = asRecord(await response.json().catch(() => null));
+    const contentType = response.headers.get("content-type") ?? "";
+    const text = await response.text().catch(() => "");
+    let body: Record<string, unknown> | null = null;
+    try {
+      body = asRecord(JSON.parse(text));
+    } catch {
+      body = null;
+    }
     const message = String(body?.message ?? "");
     return {
       evolution: /evolution/i.test(message),
       version: typeof body?.version === "string" ? body.version : "",
+      status: response.status,
+      basicAuth: /basic/i.test(response.headers.get("www-authenticate") ?? ""),
+      html: contentType.includes("text/html") || /^\s*</.test(text),
     };
   } catch {
-    return { evolution: false, version: "" };
+    return { evolution: false, version: "", status: 0, basicAuth: false, html: false };
   }
+}
+
+/** Por que a Evolution recusou o pedido, em linguagem de quem configura. */
+export function explainRejection(address: string, server: ServerIdentity): string {
+  if (server.evolution) {
+    const version = server.version ? ` ${server.version}` : "";
+    return `a Evolution${version} em ${address} foi encontrada, mas recusou a chave — EVOLUTION_API_KEY precisa ser a API Key global (AUTHENTICATION_API_KEY no EasyPanel, a mesma usada para entrar no Evolution Manager)`;
+  }
+  if (server.basicAuth) {
+    return `o domínio ${address} pede usuário e senha antes de chegar à Evolution (proteção do EasyPanel). Desligue essa proteção no domínio da Evolution no EasyPanel, ou coloque os dois no link: https://usuario:senha@${address}`;
+  }
+  if (server.html) {
+    return `${address} abriu uma página, não a API da Evolution — parece o painel do EasyPanel ou o Manager. Use o domínio da Evolution (aba Domains do serviço no EasyPanel), sem /manager`;
+  }
+  if (server.status === 0) {
+    return `${address} não respondeu — confira o endereço e se a VPS está no ar`;
+  }
+  return `${address} respondeu ${server.status} e não se identificou como Evolution API — use o domínio da Evolution (aba Domains do serviço no EasyPanel), sem /manager`;
 }
 
 async function keyRejected(
@@ -118,11 +199,7 @@ async function keyRejected(
   fetchImpl: FetchLike,
 ): Promise<string> {
   const server = await identifyServer(config.baseUrl, fetchImpl);
-  if (!server.evolution) {
-    return "o endereço em EVOLUTION_API_URL pediu senha, mas não respondeu como Evolution API — use o endereço da API (o mesmo que o Manager pede como “Server URL”), sem /manager e sem o endereço do EasyPanel";
-  }
-  const version = server.version ? ` ${server.version}` : "";
-  return `a Evolution${version} foi encontrada, mas recusou a chave — EVOLUTION_API_KEY precisa ser a API Key global (a mesma usada para entrar no Evolution Manager)`;
+  return explainRejection(displayAddress(config.baseUrl), server);
 }
 
 export async function connectionCheck(
@@ -304,6 +381,9 @@ export async function configureWebhook(
     }
   } catch (error) {
     return { ok: false, text: requestFailure(error) };
+  }
+  if (lastStatus === 401 || lastStatus === 403) {
+    return { ok: false, text: await keyRejected(config, fetchImpl) };
   }
   return { ok: false, text: statusFailure(lastStatus) };
 }

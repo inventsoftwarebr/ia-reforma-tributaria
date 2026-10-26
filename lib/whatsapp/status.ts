@@ -2,6 +2,7 @@ import { appUrl, serverEnv } from "@/lib/env";
 import {
   type Check,
   configProblem,
+  displayAddress,
   connectionCheck,
   type EvolutionConfig,
   expectedWebhookUrl,
@@ -53,6 +54,8 @@ export function webhookTarget(): Check & { url?: string } {
 
 export interface WhatsAppStatus {
   provedor: string;
+  /** Endereço da Evolution em uso, sem usuário e senha. */
+  endereco: string;
   conexao: Check;
   /** `atual`: destino configurado hoje, com token mascarado. */
   webhook: Check & { atual?: string };
@@ -65,19 +68,32 @@ export async function whatsappStatus(): Promise<WhatsAppStatus> {
 
   if (env.WHATSAPP_GATEWAY !== "evolution") {
     const skip = { ok: true, text: "não se aplica (WhatsApp Cloud API)" } as const;
-    return { provedor: env.WHATSAPP_GATEWAY, conexao: skip, webhook: skip, destino };
+    return {
+      provedor: env.WHATSAPP_GATEWAY,
+      endereco: "—",
+      conexao: skip,
+      webhook: skip,
+      destino,
+    };
   }
 
   const config = evolutionConfig();
+  const endereco = displayAddress(config.baseUrl);
   const problem = configProblem(config);
   if (problem) {
     const pending = { ok: false, text: problem } as const;
-    return { provedor: "evolution", conexao: pending, webhook: pending, destino };
+    return {
+      provedor: "evolution",
+      endereco,
+      conexao: pending,
+      webhook: pending,
+      destino,
+    };
   }
 
   const [conexao, webhook] = await Promise.all([
     connectionCheck(config),
     webhookCheck(config, appUrl(), env.EVOLUTION_WEBHOOK_SECRET),
   ]);
-  return { provedor: "evolution", conexao, webhook, destino };
+  return { provedor: "evolution", endereco, conexao, webhook, destino };
 }

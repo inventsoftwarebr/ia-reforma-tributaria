@@ -43,12 +43,15 @@ export default async function WhatsApp({
     <main>
       <h1>WhatsApp</h1>
       <p className="muted">
-        Instância <code>{instancia || "—"}</code> na Evolution API.
+        Instância <code>{instancia || "—"}</code> na Evolution API em{" "}
+        <code>{status.endereco}</code>.
       </p>
 
       {resultado ? (
         <p className="notice" style={{ marginTop: "1rem" }}>
-          {resultado === "ok" ? "Pronto: " : "Não foi possível configurar: "}
+          {resultado === "ok"
+            ? "Pronto: "
+            : "Último clique em “Configurar webhook” não funcionou: "}
           {msg}
         </p>
       ) : null}
@@ -91,7 +94,13 @@ export default async function WhatsApp({
             Comece por um número de teste.
           </p>
           <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
-            <input type="checkbox" name="confirmo" value="sim" required />
+            <input
+              type="checkbox"
+              name="confirmo"
+              value="sim"
+              required
+              style={{ width: "auto", flex: "none", marginTop: "0.25rem" }}
+            />
             <span>
               Entendo que, a partir deste clique, as mensagens desta instância deixam de
               ir para o destino atual e passam a ser respondidas por este sistema.

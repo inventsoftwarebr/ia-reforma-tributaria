@@ -3,10 +3,12 @@ import {
   configProblem,
   configureWebhook,
   connectionCheck,
+  displayAddress,
   evaluateWebhook,
   expectedWebhookUrl,
   maskUrl,
   parseWebhook,
+  splitBasicAuth,
   webhookBodies,
 } from "./evolution-admin";
 
@@ -73,16 +75,32 @@ describe("connectionCheck", () => {
         : json(401, { message: "Unauthorized" });
     const check = await connectionCheck(CONFIG, fake);
     expect(check.ok).toBe(false);
-    expect(check.text).toMatch(/Evolution 2\.2\.3 foi encontrada, mas recusou a chave/);
+    expect(check.text).toMatch(
+      /Evolution 2\.2\.3 em evo\.invent\.app foi encontrada, mas recusou a chave/,
+    );
     expect(check.text).toMatch(/Manager/);
   });
 
-  it("endereço que pede senha mas não é a Evolution (Manager, EasyPanel)", async () => {
+  it("endereço que abre uma página (Manager, painel do EasyPanel)", async () => {
+    const fake: typeof fetch = async (input) =>
+      String(input).endsWith("/")
+        ? new Response("<html>login</html>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          })
+        : new Response("{}", { status: 401 });
+    expect((await connectionCheck(CONFIG, fake)).text).toMatch(/abriu uma página/);
+  });
+
+  it("domínio com senha do EasyPanel (Basic Auth)", async () => {
     const fake: typeof fetch = async () =>
-      new Response("<html>login</html>", { status: 401 });
-    expect((await connectionCheck(CONFIG, fake)).text).toMatch(
-      /não respondeu como Evolution API/,
-    );
+      new Response("Unauthorized", {
+        status: 401,
+        headers: { "www-authenticate": 'Basic realm="x"' },
+      });
+    const text = (await connectionCheck(CONFIG, fake)).text;
+    expect(text).toMatch(/pede usuário e senha/);
+    expect(text).toContain("https://usuario:senha@evo.invent.app");
   });
 
   it("instância com nome errado", async () => {
@@ -200,13 +218,13 @@ describe("configureWebhook", () => {
   });
 
   it("não insiste com chave errada", async () => {
-    let chamadas = 0;
-    const fake: typeof fetch = async () => {
-      chamadas += 1;
+    let gravacoes = 0;
+    const fake: typeof fetch = async (input) => {
+      if (String(input).includes("/webhook/set/")) gravacoes += 1;
       return json(401, {});
     };
     expect((await configureWebhook(CONFIG, CERTA, fake)).ok).toBe(false);
-    expect(chamadas).toBe(1);
+    expect(gravacoes).toBe(1);
   });
 
   it("todo corpo desliga o 'by events' e assina só MESSAGES_UPSERT", () => {
@@ -235,5 +253,48 @@ describe("maskUrl", () => {
 
   it("endereço quebrado", () => {
     expect(maskUrl("n8n sem protocolo")).toBe("(endereço inválido)");
+  });
+});
+
+describe("splitBasicAuth", () => {
+  it("tira usuário e senha da URL e manda como cabeçalho", () => {
+    const { url, authorization } = splitBasicAuth(
+      "https://admin:s3nh%40@evo.invent.app/",
+    );
+    expect(url).toBe("https://evo.invent.app");
+    expect(authorization).toBe(`Basic ${Buffer.from("admin:s3nh@").toString("base64")}`);
+  });
+
+  it("sem credencial, só normaliza", () => {
+    expect(splitBasicAuth(" https://evo.invent.app/ ")).toEqual({
+      url: "https://evo.invent.app",
+    });
+  });
+
+  it("endereço exibido nunca mostra a senha", () => {
+    expect(displayAddress("https://admin:segredo@evo.invent.app")).toBe(
+      "evo.invent.app (com usuário e senha)",
+    );
+    expect(displayAddress("https://evo.invent.app/manager")).toBe(
+      "evo.invent.app/manager",
+    );
+  });
+
+  it("chamada à Evolution leva o cabeçalho e não a senha na URL", async () => {
+    let chamada = "";
+    let auth = "";
+    const fake: typeof fetch = async (input, init) => {
+      chamada = String(input);
+      auth = new Headers(init?.headers).get("authorization") ?? "";
+      return new Response(JSON.stringify({ instance: { state: "open" } }), {
+        status: 200,
+      });
+    };
+    await connectionCheck(
+      { ...CONFIG, baseUrl: "https://admin:segredo@evo.invent.app" },
+      fake,
+    );
+    expect(chamada).not.toContain("segredo");
+    expect(auth).toMatch(/^Basic /);
   });
 });
