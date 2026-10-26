@@ -265,6 +265,13 @@ export interface SourceRow {
   reviewedBy: string | null;
   reviewedAt: Date | null;
   chunks: number;
+  /** Trechos já com embedding: só esses aparecem na busca. */
+  indexed: number;
+  url: string | null;
+  version: string | null;
+  autoUpdate: boolean;
+  lastCheckedAt: Date | null;
+  lastCheckStatus: string | null;
 }
 
 export async function listSources(): Promise<SourceRow[]> {
@@ -281,14 +288,28 @@ export async function listSources(): Promise<SourceRow[]> {
       effectiveTo: kbSources.effectiveTo,
       reviewedBy: kbSources.reviewedBy,
       reviewedAt: kbSources.reviewedAt,
+      // SQL explícito: num select de uma tabela só, o Drizzle escreve as colunas
+      // sem o nome da tabela, e "source_id = id" viraria kb_chunks com ele mesmo.
       chunks: sql<number>`(
-        select count(*) from ${kbChunks} where ${kbChunks.sourceId} = ${kbSources.id}
+        select count(*) from public.kb_chunks c where c.source_id = "kb_sources"."id"
       )`,
+      indexed: sql<number>`(
+        select count(c.embedding) from public.kb_chunks c where c.source_id = "kb_sources"."id"
+      )`,
+      url: kbSources.url,
+      version: kbSources.version,
+      autoUpdate: kbSources.autoUpdate,
+      lastCheckedAt: kbSources.lastCheckedAt,
+      lastCheckStatus: kbSources.lastCheckStatus,
     })
     .from(kbSources)
     .orderBy(kbSources.authority, kbSources.title);
 
-  return rows.map((row) => ({ ...row, chunks: Number(row.chunks) }));
+  return rows.map((row) => ({
+    ...row,
+    chunks: Number(row.chunks),
+    indexed: Number(row.indexed),
+  }));
 }
 
 export async function listPromptVersions() {
@@ -307,14 +328,18 @@ export async function listPromptVersions() {
 }
 
 /** Última mensagem recebida e enviada — prova de que o webhook chega e a resposta sai. */
-export async function lastMessages(): Promise<{ recebida: Date | null; enviada: Date | null }> {
+export async function lastMessages(): Promise<{
+  recebida: Date | null;
+  enviada: Date | null;
+}> {
   const [row] = await db
     .select({
       recebida: sql<Date | null>`max(${messages.createdAt}) filter (where ${messages.direction} = 'inbound')`,
       enviada: sql<Date | null>`max(${messages.createdAt}) filter (where ${messages.direction} = 'outbound')`,
     })
     .from(messages);
-  const toDate = (value: Date | string | null | undefined) => (value ? new Date(value) : null);
+  const toDate = (value: Date | string | null | undefined) =>
+    value ? new Date(value) : null;
   return { recebida: toDate(row?.recebida), enviada: toDate(row?.enviada) };
 }
 

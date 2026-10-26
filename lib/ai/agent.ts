@@ -7,6 +7,7 @@ import { toWhatsAppFormatting } from "@/lib/whatsapp/split";
 import { PHASES } from "@/lib/tax/schedule";
 import {
   applyGuardrails,
+  extractNormReferences,
   normalizeNormReference,
   type RefusalReason,
 } from "./guardrails";
@@ -79,13 +80,24 @@ function buildSearchQuery(input: AgentInput): string {
   return [...lastUserTurns, input.question].join(" ").slice(0, 600);
 }
 
-/** Normas que a resposta pode citar: as recuperadas, mais as do cronograma. */
-function allowedNorms(chunks: RetrievedChunk[], usedScheduleTool: boolean): string[] {
+/**
+ * Normas que a resposta pode citar: as dos trechos recuperados (pelo rótulo e
+ * pelas normas mencionadas no texto de fonte oficial ou da Invent), mais as do
+ * cronograma. Imprensa não habilita citação: o que ela menciona não foi
+ * conferido pela curadoria.
+ */
+export function allowedNorms(
+  chunks: Pick<RetrievedChunk, "citationLabel" | "content" | "authority">[],
+  usedScheduleTool: boolean,
+): string[] {
   const norms = new Set<string>();
 
   for (const chunk of chunks) {
     const normalized = normalizeNormReference(chunk.citationLabel);
     if (normalized) norms.add(normalized);
+    if (chunk.authority !== "secundaria") {
+      for (const mentioned of extractNormReferences(chunk.content)) norms.add(mentioned);
+    }
   }
 
   if (usedScheduleTool) {

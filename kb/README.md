@@ -5,12 +5,21 @@ que é o comportamento correto, mas não atende ninguém.
 
 ## Como adicionar um documento
 
-1. Converta para **Markdown ou texto puro** e salve nesta pasta. PDF não é lido pela ingestão:
-   converta antes (o Claude Code faz isso, ou qualquer conversor).
-2. Descreva o documento em `kb/manifest.json` (copie de `manifest.example.json`).
-3. Rode `pnpm kb:ingest`.
+**Pelo console (recomendado):** `/admin/base`.
 
-A ingestão é idempotente por checksum: rodar de novo só reprocessa o que mudou.
+- **Normas oficiais**: EC 132/2023 e LC 214/2025 importam com um clique, direto do Planalto
+  (`lib/kb/official.ts`). O texto revogado (riscado no site) é descartado.
+- **Adicionar fonte**: link de site (gov.br/leg.br entram como "oficial"), arquivo (PDF, Word,
+  página salva `.html`, `.txt`, `.md`, até 4 MB) ou texto colado. Mesmo título = nova versão da
+  mesma fonte.
+- **Pacote inicial**: FAQ e institucional da Invent (`lib/kb/starter.ts`), como rascunho.
+
+Fontes com **atualização diária** são conferidas pelo cron (`/api/cron/outbox`): se o texto do
+site mudou, a base é atualizada, só os trechos alterados são reprocessados e a fonte volta a "sem
+revisão". Depois de adicionar, teste no **Simulador**.
+
+**Pela linha de comando:** converta para Markdown/texto, descreva em `kb/manifest.json` (copie de
+`manifest.example.json`) e rode `pnpm kb:ingest`. Idempotente por checksum.
 
 ## Campos do manifesto
 

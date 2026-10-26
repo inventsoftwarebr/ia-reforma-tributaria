@@ -238,6 +238,16 @@ insert into "drizzle"."__drizzle_migrations" ("hash", "created_at")
 values ('5808e605b3f016586b3723611a5e94a3cab7c7ad0e9693e25c21131f8c7d9cb2', 1790272891210);
 
 -- -----------------------------------------------------------------------------
+-- migration 0001_kb_auto_update
+-- -----------------------------------------------------------------------------
+ALTER TABLE "kb_sources" ADD COLUMN "auto_update" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "kb_sources" ADD COLUMN "last_checked_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "kb_sources" ADD COLUMN "last_check_status" text;
+
+insert into "drizzle"."__drizzle_migrations" ("hash", "created_at")
+values ('46c70b783aa6f9796206dad1fd85962594d6d662c8b8bd6a503ed4230500e5a1', 1793024565505);
+
+-- -----------------------------------------------------------------------------
 -- db/functions.sql — idempotente, roda de novo com pnpm db:sql
 -- -----------------------------------------------------------------------------
 -- =============================================================================

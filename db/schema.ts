@@ -219,6 +219,14 @@ export const kbSources = pgTable(
     /** Quem revisou e quando — base sem dono é base que envelhece. */
     reviewedBy: text("reviewed_by"),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    /**
+     * Fonte importada de site oficial e conferida todo dia pelo cron: se o
+     * texto mudar no site, a base é atualizada sozinha (ver lib/kb/official.ts).
+     */
+    autoUpdate: boolean("auto_update").notNull().default(false),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    /** Resultado da última conferência, em linguagem de quem lê o console. */
+    lastCheckStatus: text("last_check_status"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

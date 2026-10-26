@@ -16,7 +16,11 @@ if (process.env.VERCEL === "1") {
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Rotas que tocam Postgres, postgres-js ou o AI SDK rodam em Node.
-  serverExternalPackages: ["postgres"],
+  serverExternalPackages: ["postgres", "unpdf", "mammoth"],
+  experimental: {
+    // Upload de PDF/Word na base de conhecimento (limite da Vercel: 4,5 MB).
+    serverActions: { bodySizeLimit: "4.5mb" },
+  },
 };
 
 export default nextConfig;

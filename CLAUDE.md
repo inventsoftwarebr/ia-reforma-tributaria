@@ -83,6 +83,15 @@ registro em `job_failures` e log de erro.
 `DATABASE_URL` aponta para o Supavisor em transaction mode (6543), com `postgres-js`, `max: 1`,
 `prepare: false`. `DIRECT_URL` (5432) só para `drizzle-kit` e scripts.
 
+Consultas saem **uma por vez** (`db/serialize.ts`): em paralelo, o postgres-js as envia juntas
+(pipelining) e o Supavisor pode nunca responder — o painel já travou assim em produção. Não use
+`max_pipeline: 0` para isso: quebra `db.transaction` ("setting 'onclose'"). Consequência: dentro de
+`db.transaction`, use só o `tx`; consulta pelo `db` lá dentro trava.
+
+Migration roda sozinha no build da Vercel (`scripts/migrate-on-deploy.ts`, antes do
+`next build`); se falhar, o deploy falha e a versão anterior fica no ar. Só migration aditiva
+(coluna/tabela nova). Gerou migration nova: `pnpm db:generate` e `pnpm db:bootstrap-sql`.
+
 ### 11. RLS default-deny em todas as tabelas
 
 Política explícita em `db/rls.sql` **no mesmo commit** que cria ou altera a tabela. O console e o

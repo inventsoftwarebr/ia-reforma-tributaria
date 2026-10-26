@@ -355,3 +355,72 @@ code {
   justify-content: space-between;
   gap: 0.5rem;
 }
+
+/* Base de conhecimento: importação e progresso. */
+.kb-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.kb-progress > div {
+  height: 100%;
+  background: var(--brand);
+  transition: width 0.4s ease;
+}
+.kb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.kb-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.kb-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.kb-form {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.kb-form .kb-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.75rem;
+}
+.kb-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.kb-form textarea {
+  font: inherit;
+  width: 100%;
+}
+.kb-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.kb-form .kb-modes,
+.kb-form .kb-modes label {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+}
+.kb-modes input {
+  width: auto;
+  margin: 0;
+}

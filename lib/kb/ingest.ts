@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { kbChunks, kbSources } from "@/db/schema";
 import { logInfo } from "@/lib/observability/logger";
@@ -7,28 +7,40 @@ import { chunkDocument, type DocumentShape } from "./chunk";
 import { embedTexts, toVectorLiteral } from "./embed";
 
 /**
- * Ingestão da base curada.
+ * Ingestão da base curada, em duas etapas:
  *
- * Idempotente por checksum: reprocessar a base inteira só gasta embedding no
- * que mudou. Uma fonte alterada tem os trechos antigos apagados e reescritos —
- * evita conviver com duas versões do mesmo artigo, que é como o agente acaba
- * citando regra revogada.
+ * 1. `prepareSource` grava a fonte e os trechos (sem embedding) numa transação.
+ *    Trecho com texto idêntico ao da versão anterior herda o embedding dela —
+ *    quando a lei muda num artigo, só aquele artigo é reprocessado, e a fonte
+ *    não "some" da busca durante a atualização.
+ * 2. `embedPending` gera os embeddings que faltam, em lotes, até um prazo.
+ *
+ * Separar as etapas é o que permite indexar a LC 214 inteira dentro do limite
+ * de tempo de uma função da Vercel e da cota por minuto do Gemini: o console e
+ * o cron chamam a segunda etapa quantas vezes for preciso. A busca
+ * (`kb_search`) ignora trecho sem embedding, então nada aparece pela metade.
  */
+
+export const KB_KINDS = [
+  "emenda",
+  "lei_complementar",
+  "lei",
+  "instrucao_normativa",
+  "nota_tecnica",
+  "faq",
+  "material_invent",
+  "imprensa",
+] as const;
+
+export type KbKind = (typeof KB_KINDS)[number];
+export type KbAuthority = "oficial" | "invent" | "secundaria";
 
 export interface SourceInput {
   slug: string;
   title: string;
   citationLabel: string;
-  kind:
-    | "emenda"
-    | "lei_complementar"
-    | "lei"
-    | "instrucao_normativa"
-    | "nota_tecnica"
-    | "faq"
-    | "material_invent"
-    | "imprensa";
-  authority: "oficial" | "invent" | "secundaria";
+  kind: KbKind;
+  authority: KbAuthority;
   shape: DocumentShape;
   url?: string;
   publisher?: string;
@@ -36,21 +48,31 @@ export interface SourceInput {
   effectiveTo?: string;
   version?: string;
   reviewedBy?: string;
+  /** Conferida todo dia no site de origem (só fontes importadas por link). */
+  autoUpdate?: boolean;
   text: string;
 }
 
-export type IngestOutcome =
-  | { slug: string; status: "unchanged" }
-  | { slug: string; status: "ingested"; chunks: number };
+export interface PrepareOutcome {
+  sourceId: string;
+  status: "unchanged" | "prepared";
+  chunks: number;
+  /** Trechos que ainda precisam de embedding. */
+  pending: number;
+  /** Trechos que herdaram o embedding da versão anterior. */
+  reused: number;
+}
 
 export function checksumOf(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
-export async function ingestSource(
+const INSERT_BATCH = 400;
+
+export async function prepareSource(
   input: SourceInput,
   options: { force?: boolean } = {},
-): Promise<IngestOutcome> {
+): Promise<PrepareOutcome> {
   const checksum = checksumOf(input.text);
 
   const [existing] = await db
@@ -59,80 +81,223 @@ export async function ingestSource(
     .where(eq(kbSources.slug, input.slug));
 
   if (existing && existing.checksum === checksum && !options.force) {
-    return { slug: input.slug, status: "unchanged" };
+    const progress = await sourceProgress(existing.id);
+    return {
+      sourceId: existing.id,
+      status: "unchanged",
+      chunks: progress.total,
+      pending: progress.total - progress.embedded,
+      reused: 0,
+    };
   }
 
   const chunks = chunkDocument(input.text, input.shape);
   if (chunks.length === 0) {
-    throw new Error(`fonte ${input.slug} não gerou nenhum trecho`);
+    throw new Error("o documento não gerou nenhum trecho de texto — ele está vazio?");
   }
 
-  const embeddings = await embedTexts(
-    chunks.map((chunk) => (chunk.heading ? `${chunk.heading}\n${chunk.content}` : chunk.content)),
-  );
+  const fields = {
+    title: input.title,
+    citationLabel: input.citationLabel,
+    kind: input.kind,
+    authority: input.authority,
+    url: input.url ?? null,
+    publisher: input.publisher ?? null,
+    effectiveFrom: input.effectiveFrom ?? null,
+    effectiveTo: input.effectiveTo ?? null,
+    version: input.version ?? null,
+    checksum,
+    autoUpdate: input.autoUpdate ?? false,
+    // Conteúdo novo derruba a revisão anterior: o time fiscal confere de novo.
+    reviewedBy: input.reviewedBy ?? null,
+    reviewedAt: input.reviewedBy ? new Date() : null,
+  };
 
-  if (embeddings.length !== chunks.length) {
-    throw new Error(
-      `fonte ${input.slug}: ${chunks.length} trechos e ${embeddings.length} embeddings`,
-    );
-  }
-
-  await db.transaction(async (tx) => {
+  const { sourceId, reused } = await db.transaction(async (tx) => {
     const [source] = await tx
       .insert(kbSources)
-      .values({
-        slug: input.slug,
-        title: input.title,
-        citationLabel: input.citationLabel,
-        kind: input.kind,
-        authority: input.authority,
-        url: input.url ?? null,
-        publisher: input.publisher ?? null,
-        effectiveFrom: input.effectiveFrom ?? null,
-        effectiveTo: input.effectiveTo ?? null,
-        version: input.version ?? null,
-        checksum,
-        reviewedBy: input.reviewedBy ?? null,
-        reviewedAt: input.reviewedBy ? new Date() : null,
-      })
+      .values({ slug: input.slug, ...fields })
       .onConflictDoUpdate({
         target: kbSources.slug,
-        set: {
-          title: input.title,
-          citationLabel: input.citationLabel,
-          kind: input.kind,
-          authority: input.authority,
-          url: input.url ?? null,
-          publisher: input.publisher ?? null,
-          effectiveFrom: input.effectiveFrom ?? null,
-          effectiveTo: input.effectiveTo ?? null,
-          version: input.version ?? null,
-          checksum,
-          status: "active",
-          reviewedBy: input.reviewedBy ?? null,
-          reviewedAt: input.reviewedBy ? new Date() : null,
-          updatedAt: new Date(),
-        },
+        set: { ...fields, status: "active", updatedAt: new Date() },
       })
       .returning({ id: kbSources.id });
-
     if (!source) throw new Error(`falha ao gravar a fonte ${input.slug}`);
 
+    // Embeddings da versão anterior, para reaproveitar o que não mudou.
+    await tx.execute(sql`
+      create temporary table kb_old_chunks on commit drop as
+      select coalesce(heading, '') as heading, content, embedding
+        from public.kb_chunks
+       where source_id = ${source.id} and embedding is not null
+    `);
     await tx.delete(kbChunks).where(eq(kbChunks.sourceId, source.id));
 
-    for (const [index, chunk] of chunks.entries()) {
-      await tx.insert(kbChunks).values({
-        sourceId: source.id,
-        ord: chunk.ord,
-        heading: chunk.heading,
-        content: chunk.content,
-        tokens: chunk.tokens,
-        embedding: sql`${toVectorLiteral(embeddings[index]!)}::vector`,
-        metadata: { shape: input.shape },
-      });
+    for (let start = 0; start < chunks.length; start += INSERT_BATCH) {
+      await tx.insert(kbChunks).values(
+        chunks.slice(start, start + INSERT_BATCH).map((chunk) => ({
+          sourceId: source.id,
+          ord: chunk.ord,
+          heading: chunk.heading,
+          content: chunk.content,
+          tokens: chunk.tokens,
+          metadata: { shape: input.shape },
+        })),
+      );
     }
+
+    const copied = await tx.execute(sql`
+      update public.kb_chunks c
+         set embedding = o.embedding
+        from kb_old_chunks o
+       where c.source_id = ${source.id}
+         and c.embedding is null
+         and coalesce(c.heading, '') = o.heading
+         and c.content = o.content
+    `);
+
+    return { sourceId: source.id, reused: copied.count ?? 0 };
   });
 
-  logInfo("kb.ingested", { slug: input.slug, chunks: chunks.length });
-  return { slug: input.slug, status: "ingested", chunks: chunks.length };
+  const pending = chunks.length - reused;
+  logInfo("kb.prepared", { slug: input.slug, chunks: chunks.length, reused, pending });
+  return { sourceId, status: "prepared", chunks: chunks.length, pending, reused };
+}
+
+export async function sourceProgress(
+  sourceId: string,
+): Promise<{ total: number; embedded: number }> {
+  const [row] = await db
+    .select({
+      total: count(),
+      embedded: sql<number>`count(${kbChunks.embedding})`,
+    })
+    .from(kbChunks)
+    .where(eq(kbChunks.sourceId, sourceId));
+  return { total: Number(row?.total ?? 0), embedded: Number(row?.embedded ?? 0) };
+}
+
+/** Cota do provedor de embedding esgotada: esperar e continuar, não falhar. */
+export class EmbeddingRateLimitError extends Error {
+  constructor() {
+    super("limite de uso do Gemini atingido; continua em instantes");
+    this.name = "EmbeddingRateLimitError";
+  }
+}
+
+export function isRateLimit(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current; depth += 1) {
+    const status =
+      typeof current === "object" && current !== null && "statusCode" in current
+        ? (current as { statusCode: unknown }).statusCode
+        : undefined;
+    const message = current instanceof Error ? current.message : String(current);
+    if (
+      status === 429 ||
+      /\b429\b|quota|rate.?limit|resource.?exhausted/i.test(message)
+    ) {
+      return true;
+    }
+    current =
+      typeof current === "object" && current !== null && "cause" in current
+        ? (current as { cause: unknown }).cause
+        : undefined;
+  }
+  return false;
+}
+
+/** Literal de array do Postgres: `{a,b}` para uuid, `{"[..]","[..]"}` para texto. */
+export function pgArray(values: string[], quote: boolean): string {
+  return `{${values.map((value) => (quote ? `"${value}"` : value)).join(",")}}`;
+}
+
+export interface EmbedOutcome {
+  embedded: number;
+  remaining: number;
+}
+
+/**
+ * Gera embeddings pendentes (de uma fonte ou de todas) até acabar ou até o
+ * prazo. Lote pequeno de propósito: ~32 trechos ≈ 12 mil tokens, abaixo da
+ * cota por minuto do plano gratuito do Gemini.
+ */
+export async function embedPending(
+  options: { sourceId?: string; batchSize?: number; deadline?: number } = {},
+): Promise<EmbedOutcome> {
+  const batchSize = options.batchSize ?? 32;
+  const deadline = options.deadline ?? Date.now() + 40_000;
+  const scope = options.sourceId
+    ? and(isNull(kbChunks.embedding), eq(kbChunks.sourceId, options.sourceId))
+    : isNull(kbChunks.embedding);
+
+  let embedded = 0;
+  while (Date.now() < deadline) {
+    const batch = await db
+      .select({ id: kbChunks.id, heading: kbChunks.heading, content: kbChunks.content })
+      .from(kbChunks)
+      .where(scope)
+      .orderBy(asc(kbChunks.sourceId), asc(kbChunks.ord))
+      .limit(batchSize);
+    if (batch.length === 0) break;
+
+    let vectors: number[][];
+    try {
+      vectors = await embedTexts(
+        batch.map((chunk) =>
+          chunk.heading ? `${chunk.heading}\n${chunk.content}` : chunk.content,
+        ),
+      );
+    } catch (error) {
+      if (isRateLimit(error)) {
+        if (embedded > 0) break;
+        throw new EmbeddingRateLimitError();
+      }
+      throw error;
+    }
+
+    await db.execute(sql`
+      update public.kb_chunks c
+         set embedding = v.embedding::vector
+        from unnest(
+          ${pgArray(
+            batch.map((chunk) => chunk.id),
+            false,
+          )}::uuid[],
+          ${pgArray(vectors.map(toVectorLiteral), true)}::text[]
+        ) as v(id, embedding)
+       where c.id = v.id
+    `);
+    embedded += batch.length;
+  }
+
+  const [left] = await db.select({ total: count() }).from(kbChunks).where(scope);
+  return { embedded, remaining: Number(left?.total ?? 0) };
+}
+
+export type IngestOutcome =
+  | { slug: string; status: "unchanged" }
+  | { slug: string; status: "ingested"; chunks: number };
+
+/** Ingestão completa de uma vez, para o script de linha de comando. */
+export async function ingestSource(
+  input: SourceInput,
+  options: { force?: boolean } = {},
+): Promise<IngestOutcome> {
+  const prepared = await prepareSource(input, options);
+  let remaining = prepared.pending;
+  while (remaining > 0) {
+    try {
+      ({ remaining } = await embedPending({
+        sourceId: prepared.sourceId,
+        deadline: Date.now() + 60_000,
+      }));
+    } catch (error) {
+      if (!(error instanceof EmbeddingRateLimitError)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 30_000));
+    }
+  }
+  return prepared.status === "unchanged" && prepared.pending === 0
+    ? { slug: input.slug, status: "unchanged" }
+    : { slug: input.slug, status: "ingested", chunks: prepared.chunks };
 }
