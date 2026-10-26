@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { sql } from "drizzle-orm";
+import { db } from "@/db/client";
 import { serverEnv } from "@/lib/env";
+import { checkAuth } from "@/lib/health";
 import { drainHubspotOutbox } from "@/lib/hubspot/outbox";
 import { logError } from "@/lib/observability/logger";
 
@@ -9,6 +12,10 @@ import { logError } from "@/lib/observability/logger";
  *
  * Sem CRON_SECRET configurado a rota fica fechada: melhor não drenar do que
  * deixar um endpoint que qualquer um dispara.
+ *
+ * Também mantém o Supabase acordado: o plano gratuito pausa o projeto após
+ * ~7 dias sem uso, e aí o login do console para de funcionar. Por isso toca o
+ * banco e o Auth todo dia, mesmo com o HubSpot desligado.
  */
 
 export const runtime = "nodejs";
@@ -25,9 +32,15 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   }
 
+  const supabase = await checkAuth(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  );
+
   try {
+    await db.execute(sql`select 1`);
     const result = await drainHubspotOutbox();
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({ ok: true, supabase, ...result });
   } catch (error) {
     logError("cron.outbox.failed", error);
     return NextResponse.json({ ok: false }, { status: 500 });

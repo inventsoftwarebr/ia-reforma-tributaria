@@ -37,6 +37,8 @@ describe("mensagens de login", () => {
 
   it("falha de rede não vira 'senha inválida'", () => {
     expect(loginErrorMessage("Failed to fetch")).toMatch(/serviço de login/);
+    expect(loginErrorMessage("Failed to fetch")).toMatch(/pausado/);
+    expect(loginErrorMessage("Failed to fetch")).toMatch(/api\/health/);
   });
 
   it("erro desconhecido mostra o texto original", () => {

@@ -45,7 +45,9 @@ export function loginErrorMessage(message: string | undefined): string {
     return "Este e-mail ainda não foi confirmado. No Supabase, confirme o usuário em Authentication → Users.";
   }
   if (text.includes("fetch") || text.includes("network")) {
-    return "Não foi possível falar com o serviço de login. Confira a conexão e tente de novo.";
+    // Causa mais comum: o plano gratuito do Supabase pausa o projeto após ~7
+    // dias sem uso, e o navegador nem consegue chegar ao serviço de login.
+    return "Não foi possível falar com o serviço de login (Supabase). Se o projeto do Supabase estiver pausado, reative em supabase.com (Restore project). Abra /api/health e veja a linha \"login\".";
   }
   return `Não foi possível entrar: ${message ?? "erro desconhecido"}.`;
 }
