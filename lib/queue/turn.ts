@@ -1,6 +1,7 @@
 import { Client, Receiver } from "@upstash/qstash";
 import { appUrl, serverEnv } from "@/lib/env";
-import { logWarn } from "@/lib/observability/logger";
+import { after } from "next/server";
+import { logError, logWarn } from "@/lib/observability/logger";
 import { runTurn } from "@/lib/turn/run";
 
 /**
@@ -19,10 +20,18 @@ export async function enqueueTurn(job: TurnJob): Promise<{ mode: "queued" | "inl
   const env = serverEnv();
 
   if (!env.QSTASH_TOKEN) {
-    // Desenvolvimento sem QStash: roda inline. Em produção isso faz o webhook
-    // estourar o orçamento de 300ms — por isso o aviso.
+    // Sem QStash: o turno roda depois da resposta (after), na mesma função.
+    // O webhook devolve 200 na hora — a Evolution não fica esperando a IA nem
+    // reenvia a mensagem por timeout. Sem debounce: mensagens em sequência
+    // podem virar respostas separadas; com QStash isso não acontece.
     logWarn("queue.inline_fallback", { reason: "QSTASH_TOKEN ausente" });
-    await runTurn(job);
+    after(async () => {
+      try {
+        await runTurn(job);
+      } catch (error) {
+        logError("queue.inline_turn_failed", error, { conversationId: job.conversationId });
+      }
+    });
     return { mode: "inline" };
   }
 

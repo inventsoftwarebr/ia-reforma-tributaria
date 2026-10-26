@@ -19,6 +19,8 @@ import { RATE_LIMITED } from "@/lib/turn/messages";
  */
 
 export const runtime = "nodejs";
+// Sem QStash, o turno roda depois da resposta (after), dentro desta função.
+export const maxDuration = 120;
 
 const jsonBody = z.unknown();
 

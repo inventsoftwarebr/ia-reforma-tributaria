@@ -72,7 +72,8 @@ function sendingInstance(): string {
   const instances = allowedInstances();
   const first = instances[0];
   if (!first) throw new Error("EVOLUTION_INSTANCE não tem nenhuma instância válida.");
-  return first;
+  // Nome com espaço ("MKT IA RT") vai codificado no caminho da URL.
+  return encodeURIComponent(first);
 }
 
 function extractMessageId(payload: unknown): string | null {
