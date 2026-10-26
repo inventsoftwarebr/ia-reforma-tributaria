@@ -2,6 +2,7 @@ import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres, { type Sql } from "postgres";
 import { validateDatabaseUrl } from "../lib/db-url";
 import * as schema from "./schema";
+import { serializeQueries } from "./serialize";
 
 /**
  * Drizzle client para código server-side. Conecta via Supavisor TRANSACTION
@@ -9,11 +10,10 @@ import * as schema from "./schema";
  *
  * - max: 1         → uma conexão por instância serverless
  * - prepare: false → PgBouncer em transaction mode não suporta prepared statements
- * - max_pipeline: 0 → uma consulta por vez na conexão. Por padrão o postgres-js
- *   envia várias juntas (pipelining) quando a página consulta em paralelo, e o
- *   Supavisor em transaction mode pode nunca responder — o painel ficava
- *   "carregando" para sempre enquanto as mesmas consultas, uma a uma, levavam
- *   1,5s. Ver CONNECTION_OPTIONS e lib/admin/diagnose.ts.
+ * - serializeQueries → uma consulta por vez na conexão. Em paralelo, o
+ *   postgres-js envia várias juntas (pipelining) e o Supavisor em transaction
+ *   mode pode nunca responder. NÃO usar `max_pipeline: 0` para isso: quebra
+ *   transações (ver db/serialize.ts).
  *
  * Lazy: só conecta no primeiro query, para o build não quebrar sem DATABASE_URL.
  */
@@ -23,7 +23,6 @@ type DB = PostgresJsDatabase<typeof schema>;
 export const CONNECTION_OPTIONS = {
   max: 1,
   prepare: false,
-  max_pipeline: 0,
   connect_timeout: 10,
 } as const;
 
@@ -38,7 +37,7 @@ function getDb(): DB {
   // connect_timeout: banco inalcançável vira erro visível em 10s. O padrão do
   // postgres-js é 30s, e somado a retentativas parecia uma tela travada.
   client = postgres(url, CONNECTION_OPTIONS);
-  database = drizzle(client, { schema });
+  database = drizzle(serializeQueries(client), { schema });
   return database;
 }
 

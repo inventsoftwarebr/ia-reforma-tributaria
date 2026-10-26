@@ -7,8 +7,9 @@ describe("CONNECTION_OPTIONS", () => {
     expect(CONNECTION_OPTIONS.prepare).toBe(false);
   });
 
-  it("nunca envia consultas em lote na mesma conexão", () => {
-    // Com o padrão (100), o painel ficava "carregando" em produção.
-    expect(CONNECTION_OPTIONS.max_pipeline).toBe(0);
+  it("não desliga o envio em lote na biblioteca: isso quebra transações", () => {
+    // A serialização fica em db/serialize.ts; max_pipeline: 0 fazia o begin
+    // falhar com "Cannot set properties of undefined (setting 'onclose')".
+    expect("max_pipeline" in CONNECTION_OPTIONS).toBe(false);
   });
 });
