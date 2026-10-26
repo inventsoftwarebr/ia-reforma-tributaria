@@ -121,6 +121,30 @@ async function textOnlySearch(
   `);
 }
 
+let knownCache: { at: number; labels: string[] } | null = null;
+
+/**
+ * Rótulos de citação das fontes ativas da base ("LC 214/2025", "EC 132/2023").
+ * No modo de orientação geral, a IA pode mencionar essas normas mesmo quando
+ * nenhum trecho delas veio na busca: existem e foram curadas. Norma que não
+ * está na base continua bloqueada como invenção.
+ */
+export async function activeCitationLabels(): Promise<string[]> {
+  if (knownCache && Date.now() - knownCache.at < 5 * 60_000) return knownCache.labels;
+  try {
+    const rows = await db.execute<{ citation_label: string }>(sql`
+      select distinct citation_label from public.kb_sources where status = 'active'
+    `);
+    knownCache = {
+      at: Date.now(),
+      labels: Array.from(rows).map((row) => row.citation_label),
+    };
+  } catch {
+    knownCache = { at: Date.now(), labels: knownCache?.labels ?? [] };
+  }
+  return knownCache.labels;
+}
+
 /** Citação curta, do jeito que o agente é instruído a escrever. */
 export function formatCitation(chunk: RetrievedChunk): string {
   return chunk.heading ? `${chunk.citationLabel}, ${chunk.heading}` : chunk.citationLabel;

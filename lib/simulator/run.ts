@@ -109,7 +109,10 @@ export async function simulateTurn(
         latencyMs: answer.latencyMs,
         tokens: answer.inputTokens + answer.outputTokens,
         error: null,
-        note: null,
+        note:
+          answer.sources.length === 0 && !answer.refused
+            ? "Nenhum trecho da base cobriu a pergunta: resposta de orientação geral, sem fonte citada."
+            : null,
       },
     };
   } catch (error) {

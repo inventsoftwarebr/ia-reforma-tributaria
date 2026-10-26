@@ -73,6 +73,11 @@ const serverSchema = z.object({
 
   /** Quantos trechos da base entram no contexto de cada resposta. */
   KB_MATCH_COUNT: z.coerce.number().int().min(1).max(20).default(8),
+  /**
+   * "geral": sem trecho na base, a IA explica com conhecimento geral (sem
+   * artigo, número ou data de memória). "estrito": sem trecho, recusa.
+   */
+  AI_KNOWLEDGE_MODE: z.enum(["geral", "estrito"]).default("geral"),
 
   RATE_LIMIT_MESSAGES_PER_DAY: z.coerce.number().int().positive().default(50),
 

@@ -26,10 +26,16 @@ que falhou. Cron da Vercel nunca mais de uma vez por dia: no plano Hobby o deplo
 
 ### 1. Nunca inventar matéria tributária
 
-Afirmação sobre regra, prazo, alíquota, crédito ou obrigação só sai com respaldo: trecho
-recuperado da base ou a tool `cronograma_reforma`. Sem respaldo, o agente recusa e oferece
-contato humano. **Recusa é comportamento correto, não falha** — e recusa alta num tema é sinal de
-lacuna de curadoria, visível no painel.
+A base curada tem prioridade e é citada. Quando ela não cobre a pergunta, o comportamento depende
+de `AI_KNOWLEDGE_MODE` (`lib/ai/prompt.ts`, bloco gerado em código, não na política editável):
+
+- `geral` (padrão, decisão da Invent): a IA explica com conhecimento geral consolidado sobre a
+  Reforma — conceito, funcionamento, termos técnicos —, sem artigo, alíquota, valor ou data de
+  memória, e sinaliza orientação geral em tema específico. Uma IA que recusa tudo não atende.
+- `estrito`: sem trecho, recusa e oferece contato humano.
+
+Nos dois modos valem as travas em código: número sem respaldo e norma fora da base são
+descartados. Recusa alta num tema continua sendo sinal de lacuna de curadoria, visível no painel.
 
 ### 2. Citação verificada, não apenas pedida
 

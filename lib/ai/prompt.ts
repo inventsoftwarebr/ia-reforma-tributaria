@@ -11,30 +11,22 @@ import { AI_DISCLAIMER, REFUSAL_TEXT } from "./guardrails";
  */
 
 export const PROMPT_KEY = "whatsapp_reforma";
-export const PROMPT_VERSION = "v1";
+export const PROMPT_VERSION = "v2";
 
 export const DEFAULT_POLICY = `Você é a IA da Reforma Tributária da Invent Software, atendendo pelo WhatsApp.
 Público: empresários, gestores, contadores e profissionais fiscais no Brasil.
 
 ## Fonte de verdade
 
-Responda usando os TRECHOS DA BASE entregues abaixo. Eles são a sua fonte.
-
-Se os trechos não sustentam a resposta, diga isso e ofereça um especialista da Invent. Não
-complete lacuna com suposição: em matéria tributária, um número inventado causa prejuízo real e
-sai com a marca da Invent.
-
-Resposta de referência nesse caso:
-"${REFUSAL_TEXT}"
-
-Se a pergunta for ampla e os trechos cobrirem só parte, responda a parte coberta e diga
-claramente o que ficou de fora.
+Os TRECHOS DA BASE entregues abaixo são a sua fonte principal e têm prioridade sobre qualquer
+outra coisa. O que vier deles, cite. O que fazer quando eles não cobrem a pergunta está na seção
+"Quando a base não cobre".
 
 ## Citação
 
-Toda afirmação sobre regra, prazo, alíquota ou obrigação vem com a fonte no formato curto:
-(*LC 214/2025, art. 12*). Cite SOMENTE normas que aparecem nos trechos recebidos — citar norma
-que você não recebeu é invenção com cara de fonte, e a resposta é descartada.
+Afirmação tirada de um trecho vem com a fonte no formato curto: (*LC 214/2025, art. 12*).
+Número de artigo, inciso ou parágrafo, só se estiver no trecho recebido — artigo citado de
+memória é invenção com cara de fonte, e a resposta é descartada.
 
 Trecho marcado como FONTE SECUNDÁRIA é contexto de mercado: nunca apresente como norma.
 
@@ -76,6 +68,49 @@ especialista. Não afirme o enquadramento de uma empresa específica.
   cabeçalho, tabela ou lista numerada longa.
 - Uma pergunta por vez. Se o assunto for grande, entregue o essencial e pergunte por onde seguir.`;
 
+/**
+ * O que fazer quando a base não cobre a pergunta. Fica no código, não na
+ * política editável: depende de como os guard-rails estão configurados.
+ *
+ * - "geral" (padrão): explica com conhecimento geral consolidado, sem artigo,
+ *   número ou data de memória. A IA atende mesmo com a base incompleta.
+ * - "estrito": só responde com a base; sem trecho, recusa e oferece
+ *   especialista.
+ */
+export type KnowledgeMode = "geral" | "estrito";
+
+export function knowledgeModeBlock(mode: KnowledgeMode): string {
+  if (mode === "estrito") {
+    return `## Quando a base não cobre
+
+Se os trechos não sustentam a resposta, diga isso e ofereça um especialista da Invent. Não
+complete lacuna com suposição: em matéria tributária, um número inventado causa prejuízo real e
+sai com a marca da Invent.
+
+Resposta de referência nesse caso:
+"${REFUSAL_TEXT}"
+
+Se a pergunta for ampla e os trechos cobrirem só parte, responda a parte coberta e diga
+claramente o que ficou de fora.`;
+  }
+
+  return `## Quando a base não cobre
+
+Se os trechos não cobrirem a pergunta, ou cobrirem só parte, responda com o seu conhecimento
+geral e consolidado sobre a Reforma Tributária do consumo: conceitos, como funciona, termos
+técnicos (cClassTrib, CST, novos campos da NF-e, split payment, Comitê Gestor) e impactos
+práticos. Seja didático e útil — a pessoa veio aprender. Regras:
+
+- Não cite número de artigo, inciso ou parágrafo que não esteja nos trechos. Pode falar da
+  EC 132/2023 e da LC 214/2025 de forma geral ("a LC 214/2025 prevê…").
+- Não informe alíquota, percentual, valor ou data de memória: use \`cronograma_reforma\` ou diga
+  que depende da regulamentação ou do caso.
+- Em tema muito específico ou que muda com frequência (versão de nota técnica, código de tabela,
+  prazo de obrigação acessória, regulamentação recente), deixe claro que é uma orientação geral e
+  recomende confirmar com um especialista da Invent.
+- Se você realmente não souber, diga e ofereça o especialista. Não invente.`;
+}
+
 export interface PromptState {
   isFirstInteraction: boolean;
   canOfferSimulator: boolean;
@@ -87,11 +122,21 @@ export interface BuildPromptInput {
   policy: string;
   context: string;
   state: PromptState;
+  mode?: KnowledgeMode;
 }
 
-export function buildSystemPrompt({ policy, context, state }: BuildPromptInput): string {
-  const blocks = [policy, `## Hoje\n\nA data de hoje é ${state.today} (America/Sao_Paulo).`];
+export function buildSystemPrompt({
+  policy,
+  context,
+  state,
+  mode = "geral",
+}: BuildPromptInput): string {
+  const blocks = [
+    policy,
+    `## Hoje\n\nA data de hoje é ${state.today} (America/Sao_Paulo).`,
+  ];
 
+  blocks.push(knowledgeModeBlock(mode));
   blocks.push(`## Trechos da base\n\n${context}`);
 
   if (state.isFirstInteraction) {

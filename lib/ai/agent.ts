@@ -1,6 +1,11 @@
 import { generateText, stepCountIs } from "ai";
 import { serverEnv } from "@/lib/env";
-import { buildContextBlock, searchKb, type RetrievedChunk } from "@/lib/kb/search";
+import {
+  activeCitationLabels,
+  buildContextBlock,
+  searchKb,
+  type RetrievedChunk,
+} from "@/lib/kb/search";
 import { logWarn } from "@/lib/observability/logger";
 import { brazilDate } from "@/lib/time";
 import { toWhatsAppFormatting } from "@/lib/whatsapp/split";
@@ -118,11 +123,20 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
   const collected: RetrievedChunk[] = [...retrieved];
 
   const policy = await activePolicy();
+  const mode = env.AI_KNOWLEDGE_MODE;
   const system = buildSystemPrompt({
     policy: policy.content,
     context: buildContextBlock(retrieved),
     state: { ...input.state, today: brazilDate(new Date()) },
+    mode,
   });
+  // Modo geral: normas da base podem ser mencionadas mesmo sem trecho na busca.
+  const baseNorms =
+    mode === "geral"
+      ? (await activeCitationLabels())
+          .map(normalizeNormReference)
+          .filter((norm): norm is string => norm !== null)
+      : [];
 
   const persist = !input.sandbox;
   let lastError: unknown;
@@ -153,7 +167,7 @@ export async function answerQuestion(input: AgentInput): Promise<AgentResult> {
       const verdict = applyGuardrails({
         text: toWhatsAppFormatting(result.text),
         usedScheduleTool,
-        availableNorms: allowedNorms(collected, usedScheduleTool),
+        availableNorms: [...allowedNorms(collected, usedScheduleTool), ...baseNorms],
         supportText: collected
           .filter((chunk) => chunk.authority !== "secundaria")
           .map((chunk) => chunk.content)
