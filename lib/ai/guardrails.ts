@@ -131,6 +131,31 @@ export function stripDisallowedLinks(text: string): { text: string; removed: str
   return { text: cleaned.replace(/[ \t]{2,}/g, " ").trim(), removed };
 }
 
+/**
+ * Condição comercial é do time da Invent, não da IA. O modelo já ofereceu o
+ * simulador como "gratuito" — e ele não é. Em frase que fala do simulador ou de
+ * produto/serviço da Invent, palavras de gratuidade saem. Frase sobre tributo
+ * fica intacta: "operações a título gratuito" é conceito da LC 214/2025.
+ */
+const COMMERCIAL_SUBJECT =
+  /simulador|invent|taxplus|bankplus|contractplus|rhello|comex|demonstra[çc][ãa]o|teste|avalia[çc][ãa]o|consultoria|diagn[óo]stico/i;
+const FREE_WORDS =
+  /,?\s*(?:(?:100%\s*)?gratuit[oa]s?|gr[áa]tis|de gra[çc]a|sem (?:nenhum )?custo(?: algum| nenhum)?|free)\b/gi;
+
+export function stripFreeClaims(text: string): { text: string; changed: boolean } {
+  let changed = false;
+  const result = text
+    .split(/(?<=[.!?\n])/)
+    .map((sentence) => {
+      if (!COMMERCIAL_SUBJECT.test(sentence)) return sentence;
+      const cleaned = sentence.replace(FREE_WORDS, "");
+      if (cleaned !== sentence) changed = true;
+      return cleaned.replace(/[ \t]{2,}/g, " ").replace(/\s+([,.!?])/g, "$1");
+    })
+    .join("");
+  return { text: result, changed };
+}
+
 export type RefusalReason =
   "empty_answer" | "numeric_claim_without_support" | "fabricated_citation";
 
@@ -149,8 +174,8 @@ export interface GuardrailInput {
 }
 
 export function applyGuardrails(input: GuardrailInput): GuardrailVerdict {
-  const { text: cleaned } = stripDisallowedLinks(input.text);
-  const text = cleaned.trim();
+  const { text: withoutLinks } = stripDisallowedLinks(input.text);
+  const text = stripFreeClaims(withoutLinks).text.trim();
 
   if (!text) {
     return { ok: false, reason: "empty_answer", text: REFUSAL_TEXT, citedNorms: [] };

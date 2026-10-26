@@ -8,6 +8,7 @@ import {
   normalizeNormReference,
   numbersBackedBy,
   stripDisallowedLinks,
+  stripFreeClaims,
 } from "./guardrails";
 
 const BASE = { usedScheduleTool: false, availableNorms: [] as string[] };
@@ -176,5 +177,44 @@ describe("número sustentado por tabela recuperada", () => {
 
   it("valor em reais com milhar", () => {
     expect(numbersBackedBy("limite de R$ 1.200,50", "limite: 1.200,50")).toBe(true);
+  });
+});
+
+describe("stripFreeClaims", () => {
+  it("tira a gratuidade inventada do simulador (caso real)", () => {
+    const original =
+      "Quer aproveitar para ver o impacto financeiro da Reforma Tributária na sua empresa? Se quiser, posso enviar o link do nosso simulador gratuito para você testar no seu cenário.";
+    const { text, changed } = stripFreeClaims(original);
+    expect(changed).toBe(true);
+    expect(text).not.toMatch(/gratuit/i);
+    expect(text).toContain(
+      "posso enviar o link do nosso simulador para você testar no seu cenário.",
+    );
+  });
+
+  it("cobre grátis, sem custo e de graça em oferta da Invent", () => {
+    for (const frase of [
+      "Posso agendar uma demonstração grátis do TaxPlus.",
+      "O diagnóstico da Invent é sem custo.",
+      "Você pode testar o simulador de graça.",
+    ]) {
+      expect(stripFreeClaims(frase).text, frase).not.toMatch(
+        /gr[áa]tis|sem custo|de gra[çc]a/i,
+      );
+    }
+  });
+
+  it("não mexe em conceito tributário", () => {
+    const frase =
+      "Operações a título gratuito, como bonificações, também podem ser tributadas.";
+    expect(stripFreeClaims(frase)).toEqual({ text: frase, changed: false });
+  });
+
+  it("aplicado na verificação final da resposta", () => {
+    const verdict = applyGuardrails({
+      ...BASE,
+      text: "Quer que eu te mande nosso simulador gratuito?",
+    });
+    expect(verdict.text).not.toMatch(/gratuit/i);
   });
 });
