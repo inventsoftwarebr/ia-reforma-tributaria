@@ -15,7 +15,7 @@ export type IngestStart =
   | { ok: false; error: string };
 
 export type IngestStep =
-  | { ok: true; remaining: number; total: number; rateLimited: boolean }
+  | { ok: true; remaining: number; total: number; paused: boolean }
   | { ok: false; error: string };
 
 /** Chave estável a partir do título: mesmo título = nova versão da mesma fonte. */

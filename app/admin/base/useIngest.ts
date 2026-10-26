@@ -13,6 +13,8 @@ export type IngestStatus =
   | { phase: "error"; message: string };
 
 const RATE_LIMIT_WAIT_MS = 30_000;
+/** ~10 minutos esperando sem nenhum avanço. */
+const MAX_PAUSES = 20;
 
 /**
  * Conduz a importação: prepara a fonte e chama a indexação em passos até
@@ -45,7 +47,9 @@ export function useIngest() {
     let message = begin.message;
     setStatus({ phase: "indexing", done: total - remaining, total, message });
 
+    let pausasSeguidas = 0;
     while (remaining > 0) {
+      const remainingAntes = remaining;
       let step;
       try {
         step = await indexSourceStep(begin.sourceId);
@@ -65,11 +69,23 @@ export function useIngest() {
       }
       total = step.total;
       remaining = step.remaining;
-      message = step.rateLimited
-        ? "Limite por minuto do Gemini atingido — continuando em 30 segundos. Pode deixar esta página aberta."
+      // Pausas seguidas sem avanço: o Gemini está fora; melhor parar e avisar.
+      pausasSeguidas =
+        step.paused && step.remaining === remainingAntes ? pausasSeguidas + 1 : 0;
+      if (pausasSeguidas > MAX_PAUSES) {
+        setStatus({
+          phase: "error",
+          message:
+            "O Gemini segue indisponível. O que já foi indexado está salvo: use “Continuar indexação” mais tarde (ou deixe para a rotina diária, que termina sozinha).",
+        });
+        router.refresh();
+        return;
+      }
+      message = step.paused
+        ? "O Gemini pediu uma pausa (limite de uso ou instabilidade) — continuando em 30 segundos. Pode deixar esta página aberta."
         : "Indexando…";
       setStatus({ phase: "indexing", done: total - remaining, total, message });
-      if (step.rateLimited)
+      if (step.paused)
         await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_WAIT_MS));
     }
 

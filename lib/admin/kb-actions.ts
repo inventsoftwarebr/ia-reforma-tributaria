@@ -8,7 +8,7 @@ import { kbSources } from "@/db/schema";
 import { slugify, type IngestStart, type IngestStep } from "@/lib/kb/console";
 import { fileKind, fileToText } from "@/lib/kb/extract";
 import {
-  EmbeddingRateLimitError,
+  EmbeddingBusyError,
   KB_KINDS,
   embedPending,
   prepareSource,
@@ -213,11 +213,11 @@ export async function indexSourceStep(sourceId: string): Promise<IngestStep> {
     });
     const { total } = await sourceProgress(id);
     if (remaining === 0) revalidatePath("/admin/base");
-    return { ok: true, remaining, total, rateLimited: false };
+    return { ok: true, remaining, total, paused: false };
   } catch (error) {
-    if (error instanceof EmbeddingRateLimitError) {
+    if (error instanceof EmbeddingBusyError) {
       const { total, embedded } = await sourceProgress(id);
-      return { ok: true, remaining: total - embedded, total, rateLimited: true };
+      return { ok: true, remaining: total - embedded, total, paused: true };
     }
     return failure(error, "admin.kb_index_failed");
   }

@@ -4,7 +4,7 @@ import { db } from "@/db/client";
 import { serverEnv } from "@/lib/env";
 import { checkAuth } from "@/lib/health";
 import { drainHubspotOutbox } from "@/lib/hubspot/outbox";
-import { EmbeddingRateLimitError, embedPending } from "@/lib/kb/ingest";
+import { EmbeddingBusyError, embedPending } from "@/lib/kb/ingest";
 import { checkOfficialSources } from "@/lib/kb/official";
 import { logError } from "@/lib/observability/logger";
 
@@ -59,8 +59,10 @@ export async function POST(request: Request): Promise<Response> {
       indexacao = await embedPending({ deadline: startedAt + 240_000 });
     } catch (error) {
       indexacao =
-        error instanceof EmbeddingRateLimitError ? "limite do Gemini; continua amanhã" : "falhou";
-      if (!(error instanceof EmbeddingRateLimitError)) logError("cron.kb_embed_failed", error);
+        error instanceof EmbeddingBusyError
+          ? "limite do Gemini; continua amanhã"
+          : "falhou";
+      if (!(error instanceof EmbeddingBusyError)) logError("cron.kb_embed_failed", error);
     }
 
     return NextResponse.json({ ok: true, supabase, ...hubspot, fontes, indexacao });

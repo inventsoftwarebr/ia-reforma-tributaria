@@ -177,32 +177,48 @@ export async function sourceProgress(
   return { total: Number(row?.total ?? 0), embedded: Number(row?.embedded ?? 0) };
 }
 
-/** Cota do provedor de embedding esgotada: esperar e continuar, não falhar. */
-export class EmbeddingRateLimitError extends Error {
+/**
+ * Gemini pediu pausa: cota por minuto esgotada ou serviço instável (503,
+ * "overloaded"). Esperar e continuar — falhar faria a pessoa recomeçar à mão.
+ */
+export class EmbeddingBusyError extends Error {
   constructor() {
-    super("limite de uso do Gemini atingido; continua em instantes");
-    this.name = "EmbeddingRateLimitError";
+    super(
+      "o Gemini pediu uma pausa (limite de uso ou instabilidade); continua em instantes",
+    );
+    this.name = "EmbeddingBusyError";
   }
 }
 
-export function isRateLimit(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; depth < 5 && current; depth += 1) {
-    const status =
-      typeof current === "object" && current !== null && "statusCode" in current
-        ? (current as { statusCode: unknown }).statusCode
-        : undefined;
-    const message = current instanceof Error ? current.message : String(current);
-    if (
-      status === 429 ||
-      /\b429\b|quota|rate.?limit|resource.?exhausted/i.test(message)
-    ) {
-      return true;
+const TEMPORARY_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+const TEMPORARY_MESSAGE =
+  /\b(408|429|500|502|503|504)\b|quota|rate.?limit|resource.?exhausted|unavailable|overloaded|try again|timed? ?out|ECONNRESET|socket hang up/i;
+
+/**
+ * Falha que passa sozinha. Percorre `cause` e `lastError` (o AI SDK embrulha a
+ * última tentativa em "Failed after 3 attempts").
+ */
+export function isTemporaryFailure(error: unknown): boolean {
+  const queue: unknown[] = [error];
+  for (let seen = 0; seen < 8 && queue.length > 0; seen += 1) {
+    const current = queue.shift();
+    if (!current) continue;
+    if (typeof current === "object") {
+      const record = current as {
+        statusCode?: unknown;
+        cause?: unknown;
+        lastError?: unknown;
+      };
+      if (
+        typeof record.statusCode === "number" &&
+        TEMPORARY_STATUS.has(record.statusCode)
+      ) {
+        return true;
+      }
+      queue.push(record.cause, record.lastError);
     }
-    current =
-      typeof current === "object" && current !== null && "cause" in current
-        ? (current as { cause: unknown }).cause
-        : undefined;
+    const message = current instanceof Error ? current.message : String(current);
+    if (TEMPORARY_MESSAGE.test(message)) return true;
   }
   return false;
 }
@@ -249,9 +265,9 @@ export async function embedPending(
         ),
       );
     } catch (error) {
-      if (isRateLimit(error)) {
+      if (isTemporaryFailure(error)) {
         if (embedded > 0) break;
-        throw new EmbeddingRateLimitError();
+        throw new EmbeddingBusyError();
       }
       throw error;
     }
@@ -293,7 +309,7 @@ export async function ingestSource(
         deadline: Date.now() + 60_000,
       }));
     } catch (error) {
-      if (!(error instanceof EmbeddingRateLimitError)) throw error;
+      if (!(error instanceof EmbeddingBusyError)) throw error;
       await new Promise((resolve) => setTimeout(resolve, 30_000));
     }
   }

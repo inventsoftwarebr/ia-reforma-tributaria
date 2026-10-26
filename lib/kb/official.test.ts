@@ -4,7 +4,7 @@ vi.mock("@/db/client", () => ({ db: {} }));
 
 const { OFFICIAL_CATALOG, assertFetchableUrl, isOfficialHost, shapeForKind } =
   await import("./official");
-const { isRateLimit, pgArray } = await import("./ingest");
+const { isTemporaryFailure, pgArray } = await import("./ingest");
 const { slugify } = await import("./console");
 
 describe("isOfficialHost", () => {
@@ -65,13 +65,30 @@ describe("shapeForKind", () => {
   });
 });
 
-describe("isRateLimit", () => {
-  it("reconhece a cota esgotada do Gemini, mesmo embrulhada", () => {
+describe("isTemporaryFailure", () => {
+  it("cota esgotada do Gemini, mesmo embrulhada", () => {
     const api = Object.assign(new Error("Resource has been exhausted"), {
       statusCode: 429,
     });
-    expect(isRateLimit(new Error("falhou", { cause: api }))).toBe(true);
-    expect(isRateLimit(new Error("Invalid API key"))).toBe(false);
+    expect(isTemporaryFailure(new Error("falhou", { cause: api }))).toBe(true);
+  });
+
+  it("instabilidade depois das tentativas do AI SDK (como aconteceu em produção)", () => {
+    const api = Object.assign(new Error("The service is currently unavailable"), {
+      statusCode: 503,
+    });
+    const retry = Object.assign(
+      new Error(
+        "Failed after 3 attempts. Last error: The service is currently unavailable.",
+      ),
+      { lastError: api },
+    );
+    expect(isTemporaryFailure(retry)).toBe(true);
+  });
+
+  it("erro de configuração não é temporário", () => {
+    const api = Object.assign(new Error("API key not valid"), { statusCode: 400 });
+    expect(isTemporaryFailure(api)).toBe(false);
   });
 });
 

@@ -5,7 +5,7 @@ import { logError, logInfo } from "@/lib/observability/logger";
 import type { DocumentShape } from "./chunk";
 import { decodeBytes, htmlToText, normalizeText, pdfToText } from "./extract";
 import {
-  EmbeddingRateLimitError,
+  EmbeddingBusyError,
   embedPending,
   prepareSource,
   type KbKind,
@@ -239,7 +239,7 @@ export async function checkOfficialSources(): Promise<CheckResult[]> {
           sourceId: outcome.sourceId,
           deadline: Date.now() + 30_000,
         }).catch((error: unknown) => {
-          if (!(error instanceof EmbeddingRateLimitError)) throw error;
+          if (!(error instanceof EmbeddingBusyError)) throw error;
         });
       }
       result = {
