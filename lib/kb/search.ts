@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { serverEnv } from "@/lib/env";
 import { brazilDay } from "@/lib/time";
+import { isDailyQuota, isTemporaryFailure } from "@/lib/ai/errors";
+import { describeError, logWarn } from "@/lib/observability/logger";
 import { embedQuery, toVectorLiteral } from "./embed";
 
 /**
@@ -48,16 +50,25 @@ export async function searchKb(
 
   const matchCount = options.matchCount ?? serverEnv().KB_MATCH_COUNT;
   const atDate = options.atDate ?? brazilDay();
-  const embedding = await embedQuery(text);
 
-  const rows = await db.execute<SearchRow>(sql`
-    select * from public.kb_search(
-      ${toVectorLiteral(embedding)}::vector,
-      ${text},
-      ${matchCount}::integer,
-      ${atDate}::date
-    )
-  `);
+  let rows: Iterable<SearchRow>;
+  try {
+    const embedding = await embedQuery(text);
+    rows = await db.execute<SearchRow>(sql`
+      select * from public.kb_search(
+        ${toVectorLiteral(embedding)}::vector,
+        ${text},
+        ${matchCount}::integer,
+        ${atDate}::date
+      )
+    `);
+  } catch (error) {
+    // Sem embedding (cota do Gemini, instabilidade), a busca por palavras ainda
+    // acha o que importa — melhor que deixar o cliente sem resposta.
+    if (!isTemporaryFailure(error) && !isDailyQuota(error)) throw error;
+    logWarn("kb.search_text_only", { reason: describeError(error).slice(0, 200) });
+    rows = await textOnlySearch(text, matchCount, atDate);
+  }
 
   return Array.from(rows).map((row) => ({
     chunkId: row.chunk_id,
@@ -72,6 +83,42 @@ export async function searchKb(
     effectiveFrom: row.effective_from,
     score: Number(row.score),
   }));
+}
+
+/**
+ * Termos da pergunta ligados por "or": a busca por palavras em AND ("o que é a
+ * CBS e o IBS") quase nunca acha um trecho com todas.
+ */
+export function textQueryTerms(question: string): string {
+  const words = question
+    .toLowerCase()
+    .normalize("NFC")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length >= 3);
+  return [...new Set(words)].slice(0, 12).join(" or ");
+}
+
+async function textOnlySearch(
+  question: string,
+  matchCount: number,
+  atDate: string,
+): Promise<Iterable<SearchRow>> {
+  const terms = textQueryTerms(question);
+  if (!terms) return [];
+  return db.execute<SearchRow>(sql`
+    select c.id as chunk_id, c.source_id, c.heading, c.content,
+           s.title as source_title, s.citation_label, s.kind::text as source_kind,
+           s.authority::text as authority, s.url as source_url, s.effective_from,
+           ts_rank_cd(c.tsv, websearch_to_tsquery('portuguese', ${terms}))::real as score
+      from public.kb_chunks c
+      join public.kb_sources s on s.id = c.source_id
+     where s.status = 'active'
+       and (s.effective_from is null or s.effective_from <= ${atDate}::date)
+       and (s.effective_to is null or s.effective_to >= ${atDate}::date)
+       and c.tsv @@ websearch_to_tsquery('portuguese', ${terms})
+     order by score desc
+     limit ${matchCount}
+  `);
 }
 
 /** Citação curta, do jeito que o agente é instruído a escrever. */
@@ -95,7 +142,9 @@ export function buildContextBlock(chunks: RetrievedChunk[]): string {
             ? "MATERIAL INVENT"
             : "FONTE SECUNDÁRIA (contexto, nunca citar como norma)";
 
-      const vigencia = chunk.effectiveFrom ? ` · vigente desde ${chunk.effectiveFrom}` : "";
+      const vigencia = chunk.effectiveFrom
+        ? ` · vigente desde ${chunk.effectiveFrom}`
+        : "";
 
       return [
         `[${index + 1}] ${authority} · ${formatCitation(chunk)}${vigencia}`,

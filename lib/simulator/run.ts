@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { answerQuestion } from "@/lib/ai/agent";
+import { DAILY_QUOTA_MESSAGE, isDailyQuota } from "@/lib/ai/errors";
 import { OPT_OUT_CONFIRMATION, isOptOutRequest } from "@/lib/ai/guardrails";
 import { describeError, logError, logInfo } from "@/lib/observability/logger";
 import { FALLBACK_ERROR } from "@/lib/turn/messages";
@@ -116,7 +117,13 @@ export async function simulateTurn(
     return {
       blocks: [FALLBACK_ERROR],
       state: input.state,
-      details: { ...NO_DETAILS, error: describeError(error).slice(0, 500), note: null },
+      details: {
+        ...NO_DETAILS,
+        error: isDailyQuota(error)
+          ? DAILY_QUOTA_MESSAGE
+          : describeError(error).slice(0, 500),
+        note: null,
+      },
     };
   }
 }

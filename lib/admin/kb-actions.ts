@@ -9,6 +9,7 @@ import { slugify, type IngestStart, type IngestStep } from "@/lib/kb/console";
 import { fileKind, fileToText } from "@/lib/kb/extract";
 import {
   EmbeddingBusyError,
+  EmbeddingQuotaError,
   KB_KINDS,
   embedPending,
   prepareSource,
@@ -215,6 +216,9 @@ export async function indexSourceStep(sourceId: string): Promise<IngestStep> {
     if (remaining === 0) revalidatePath("/admin/base");
     return { ok: true, remaining, total, paused: false };
   } catch (error) {
+    if (error instanceof EmbeddingQuotaError) {
+      return { ok: false, error: `${error.message} O que já foi indexado está salvo.` };
+    }
     if (error instanceof EmbeddingBusyError) {
       const { total, embedded } = await sourceProgress(id);
       return { ok: true, remaining: total - embedded, total, paused: true };

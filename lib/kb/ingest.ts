@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { kbChunks, kbSources } from "@/db/schema";
+import { DAILY_QUOTA_MESSAGE, isDailyQuota, isTemporaryFailure } from "@/lib/ai/errors";
 import { logInfo } from "@/lib/observability/logger";
 import { chunkDocument, type DocumentShape } from "./chunk";
 import { embedTexts, toVectorLiteral } from "./embed";
@@ -190,38 +191,15 @@ export class EmbeddingBusyError extends Error {
   }
 }
 
-const TEMPORARY_STATUS = new Set([408, 429, 500, 502, 503, 504]);
-const TEMPORARY_MESSAGE =
-  /\b(408|429|500|502|503|504)\b|quota|rate.?limit|resource.?exhausted|unavailable|overloaded|try again|timed? ?out|ECONNRESET|socket hang up/i;
-
-/**
- * Falha que passa sozinha. Percorre `cause` e `lastError` (o AI SDK embrulha a
- * última tentativa em "Failed after 3 attempts").
- */
-export function isTemporaryFailure(error: unknown): boolean {
-  const queue: unknown[] = [error];
-  for (let seen = 0; seen < 8 && queue.length > 0; seen += 1) {
-    const current = queue.shift();
-    if (!current) continue;
-    if (typeof current === "object") {
-      const record = current as {
-        statusCode?: unknown;
-        cause?: unknown;
-        lastError?: unknown;
-      };
-      if (
-        typeof record.statusCode === "number" &&
-        TEMPORARY_STATUS.has(record.statusCode)
-      ) {
-        return true;
-      }
-      queue.push(record.cause, record.lastError);
-    }
-    const message = current instanceof Error ? current.message : String(current);
-    if (TEMPORARY_MESSAGE.test(message)) return true;
+/** Cota diária do Gemini esgotada: esperar 30s não adianta. */
+export class EmbeddingQuotaError extends Error {
+  constructor() {
+    super(DAILY_QUOTA_MESSAGE);
+    this.name = "EmbeddingQuotaError";
   }
-  return false;
 }
+
+export { isTemporaryFailure };
 
 /** Literal de array do Postgres: `{a,b}` para uuid, `{"[..]","[..]"}` para texto. */
 export function pgArray(values: string[], quote: boolean): string {
@@ -265,6 +243,11 @@ export async function embedPending(
         ),
       );
     } catch (error) {
+      // Cota diária vem antes: também é 429, mas não passa em 30 segundos.
+      if (isDailyQuota(error)) {
+        if (embedded > 0) break;
+        throw new EmbeddingQuotaError();
+      }
       if (isTemporaryFailure(error)) {
         if (embedded > 0) break;
         throw new EmbeddingBusyError();

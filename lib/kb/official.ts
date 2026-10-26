@@ -6,6 +6,7 @@ import type { DocumentShape } from "./chunk";
 import { decodeBytes, htmlToText, normalizeText, pdfToText } from "./extract";
 import {
   EmbeddingBusyError,
+  EmbeddingQuotaError,
   embedPending,
   prepareSource,
   type KbKind,
@@ -239,7 +240,12 @@ export async function checkOfficialSources(): Promise<CheckResult[]> {
           sourceId: outcome.sourceId,
           deadline: Date.now() + 30_000,
         }).catch((error: unknown) => {
-          if (!(error instanceof EmbeddingBusyError)) throw error;
+          // Sem cota agora: o texto novo já está gravado e o cron termina depois.
+          if (!(
+            error instanceof EmbeddingBusyError || error instanceof EmbeddingQuotaError
+          )) {
+            throw error;
+          }
         });
       }
       result = {
