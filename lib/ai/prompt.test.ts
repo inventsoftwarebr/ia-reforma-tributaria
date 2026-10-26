@@ -32,3 +32,24 @@ describe("modo de conhecimento", () => {
     expect(prompt).not.toMatch(/conhecimento\s+geral/);
   });
 });
+
+describe("posicionamento da Invent", () => {
+  const prompt = buildSystemPrompt({ policy: DEFAULT_POLICY, context: "", state: STATE });
+
+  it("TaxPlus é a solução fiscal principal", () => {
+    expect(prompt).toMatch(/solução fiscal principal da Invent Software é o \*TaxPlus\*/);
+  });
+
+  it("simulador é ferramenta de apoio, não produto", () => {
+    expect(prompt).toMatch(/simulador NÃO é produto nem solução da Invent/);
+  });
+
+  it("vale também quando o simulador ainda pode ser oferecido", () => {
+    const comOferta = buildSystemPrompt({
+      policy: DEFAULT_POLICY,
+      context: "",
+      state: { ...STATE, canOfferSimulator: true },
+    });
+    expect(comOferta).toMatch(/não um produto da Invent \(a solução\s+é o \*TaxPlus\*\)/);
+  });
+});
