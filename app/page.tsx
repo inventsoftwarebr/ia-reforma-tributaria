@@ -1,18 +1,33 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import { Inter, JetBrains_Mono, Montserrat } from "next/font/google";
 import { SiteChat } from "./SiteChat";
 import styles from "./site.module.css";
 
 /**
  * Chat público da IA da Reforma Tributária, no site. Mesma IA, base e regras
- * do WhatsApp; sem login, com limite de uso e sem gravar a conversa — só o
+ * do WhatsApp; sem login, com limite de uso e sem gravar a conversa, só o
  * pedido de contato, com consentimento (lib/public/actions.ts).
+ *
+ * Identidade visual Invent Software: Montserrat em títulos, Inter no corpo,
+ * JetBrains Mono em normas e códigos (tokens em site.module.css).
  */
 
-const font = Plus_Jakarta_Sans({
+const montserrat = Montserrat({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-site",
+  weight: ["500", "600", "700"],
+  variable: "--font-montserrat",
+  display: "swap",
+});
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-inter",
+  display: "swap",
+});
+const jetbrains = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-jetbrains",
   display: "swap",
 });
 
@@ -22,12 +37,14 @@ export const maxDuration = 60;
 export const metadata: Metadata = {
   title: "IA da Reforma Tributária | Invent Software",
   description:
-    "Tire suas dúvidas sobre a Reforma Tributária: IBS, CBS, Imposto Seletivo, transição e nota fiscal, com base na legislação e no time fiscal da Invent Software.",
+    "Entenda a Reforma Tributária e prepare sua empresa: CBS, IBS, Imposto Seletivo, transição e NF-e, com base na legislação e no time fiscal da Invent Software.",
 };
 
 export default function Home() {
   return (
-    <div className={`${styles.site} ${font.variable}`}>
+    <div
+      className={`${styles.site} ${montserrat.variable} ${inter.variable} ${jetbrains.variable}`}
+    >
       <SiteChat />
     </div>
   );

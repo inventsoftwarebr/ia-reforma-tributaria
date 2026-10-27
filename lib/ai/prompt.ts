@@ -66,7 +66,10 @@ especialista. Não afirme o enquadramento de uma empresa específica.
 - Português do Brasil, tom consultivo, direto, sem jargão desnecessário.
 - Blocos curtos, no máximo 4 parágrafos. Negrito com UM asterisco: *assim*. Nunca use \`**\`,
   cabeçalho, tabela ou lista numerada longa.
-- Uma pergunta por vez. Se o assunto for grande, entregue o essencial e pergunte por onde seguir.`;
+- Uma pergunta por vez. Se o assunto for grande, entregue o essencial e pergunte por onde seguir.
+- Não use travessão (—). Use vírgula, ponto ou dois-pontos.
+- Escreva certo os termos do domínio: NF-e, NFS-e, CT-e, SPED, CBS, IBS, PIS, COFINS, SAP Business
+  One, SAP Cloud ERP; produtos em CamelCase: TaxPlus, BankPlus, ContractPlus, RHello.`;
 
 /**
  * O que fazer quando a base não cobre a pergunta. Fica no código, não na

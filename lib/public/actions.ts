@@ -12,7 +12,7 @@ import { consumeQuota } from "./quota";
 
 /**
  * Ações do chat público do site. Sem login: tudo é validado aqui, com limite
- * de uso, e nada da conversa é gravado — só o pedido de contato, com
+ * de uso, e nada da conversa é gravado: só o pedido de contato, com
  * consentimento.
  */
 
@@ -30,9 +30,9 @@ export interface PublicAnswer {
 }
 
 const LIMIT_VISITOR =
-  "Você já fez bastante perguntas hoje. Amanhã eu volto a responder por aqui — e, se quiser, deixe seu contato que um especialista da *Invent* fala com você.";
+  "Você atingiu o limite de perguntas de hoje. Amanhã eu volto a responder por aqui. Se preferir, deixe seu contato e um especialista da *Invent* fala com você.";
 const LIMIT_TOTAL =
-  "Muita gente está usando a IA agora e atingimos o limite de hoje. Volte amanhã — ou deixe seu contato que um especialista da *Invent* fala com você.";
+  "A IA atingiu o limite de atendimentos de hoje. Volte amanhã ou deixe seu contato e um especialista da *Invent* fala com você.";
 
 export async function askPublic(payload: unknown): Promise<PublicAnswer> {
   const parsed = publicInputSchema.safeParse(payload);

@@ -10,12 +10,28 @@ type Entry = { role: "user"; text: string } | { role: "assistant"; blocks: strin
 
 const SUGESTOES = [
   "O que muda com a Reforma Tributária?",
-  "O que é a CBS e o que é o IBS?",
-  "Como fica a nota fiscal com IBS e CBS?",
+  "O que são a CBS e o IBS?",
+  "Como fica a NF-e com IBS e CBS?",
   "O que é o split payment?",
-  "Como a Reforma afeta empresas do Simples?",
+  "Como a Reforma afeta empresas do Simples Nacional?",
   "Como a Invent ajuda minha empresa a se adaptar?",
 ];
+
+/* eslint-disable @next/next/no-img-element -- logos oficiais em PNG estático */
+
+/** Logo oficial: assinatura positiva no tema claro, negativa no escuro. */
+function Logo() {
+  return (
+    <picture>
+      <source srcSet="/brand/invent-negativo.png" media="(prefers-color-scheme: dark)" />
+      <img
+        className={styles.logo}
+        src="/brand/invent-positivo.png"
+        alt="Invent Software"
+      />
+    </picture>
+  );
+}
 
 /** Negrito do WhatsApp (*assim*) e links viram formatação de verdade. */
 function RichText({ text }: { text: string }) {
@@ -43,6 +59,14 @@ function RichText({ text }: { text: string }) {
   );
 }
 
+function Required() {
+  return (
+    <span className={styles.required} aria-hidden="true">
+      *
+    </span>
+  );
+}
+
 function ContactCard({ suggestion, onDone }: { suggestion: string; onDone: () => void }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,10 +75,10 @@ function ContactCard({ suggestion, onDone }: { suggestion: string; onDone: () =>
   if (sent) {
     return (
       <div className={styles.card} role="status">
-        <p className={styles.success}>Recebemos seu contato.</p>
-        <p style={{ margin: 0 }}>
-          Um especialista da Invent vai falar com você em breve. Enquanto isso, pode
-          continuar perguntando por aqui.
+        <p className={styles.alertSuccess}>
+          <span className={styles.alertTitle}>Contato solicitado</span>
+          Um especialista da Invent vai falar com você em breve. Enquanto isso, continue
+          perguntando por aqui.
         </p>
       </div>
     );
@@ -76,20 +100,32 @@ function ContactCard({ suggestion, onDone }: { suggestion: string; onDone: () =>
             setError(result.error);
           }
         } catch {
-          setError("não foi possível enviar agora; tente de novo em instantes");
+          setError("a conexão falhou; tente de novo em instantes");
         } finally {
           setSending(false);
         }
       }}
     >
-      <h2>Falar com um especialista da Invent</h2>
+      <div>
+        <h2 className={styles.cardTitle}>Fale com um especialista da Invent</h2>
+        <p className={styles.cardText}>
+          Deixe seu contato e o time da Invent retorna para entender o cenário da sua
+          empresa.
+        </p>
+      </div>
       <div className={styles.fields}>
-        <label className={styles.field}>
-          Nome
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="lead-name">
+            Nome
+            <Required />
+          </label>
           <input id="lead-name" name="name" required minLength={2} autoComplete="name" />
-        </label>
-        <label className={styles.field}>
-          E-mail
+        </div>
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="lead-email">
+            E-mail corporativo
+            <Required />
+          </label>
           <input
             id="lead-email"
             name="email"
@@ -97,9 +133,11 @@ function ContactCard({ suggestion, onDone }: { suggestion: string; onDone: () =>
             required
             autoComplete="email"
           />
-        </label>
-        <label className={styles.field}>
-          WhatsApp (opcional)
+        </div>
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="lead-phone">
+            WhatsApp
+          </label>
           <input
             id="lead-phone"
             name="phone"
@@ -108,34 +146,37 @@ function ContactCard({ suggestion, onDone }: { suggestion: string; onDone: () =>
             autoComplete="tel"
             placeholder="(62) 99999-0000"
           />
-        </label>
-        <label className={styles.field}>
-          Empresa (opcional)
+        </div>
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="lead-company">
+            Empresa
+          </label>
           <input id="lead-company" name="company" autoComplete="organization" />
-        </label>
+        </div>
       </div>
-      <label className={styles.field}>
-        Como podemos ajudar? (opcional)
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor="lead-message">
+          Como podemos ajudar
+        </label>
         <textarea id="lead-message" name="message" rows={2} defaultValue={suggestion} />
-      </label>
-      <div className={styles.honeypot} aria-hidden="true">
-        <label>
-          Site
-          <input name="website" tabIndex={-1} autoComplete="off" />
-        </label>
       </div>
-      <label className={styles.consent}>
+      <div className={styles.honeypot} aria-hidden="true">
+        <label htmlFor="lead-website">Site</label>
+        <input id="lead-website" name="website" tabIndex={-1} autoComplete="off" />
+      </div>
+      <label className={styles.consent} htmlFor="lead-consent">
         <input id="lead-consent" type="checkbox" name="consent" required />
         <span>{CONSENT_TEXT}</span>
       </label>
       {error ? (
-        <p className={styles.error} role="alert">
-          Não foi possível enviar: {error}.
+        <p className={styles.alertError} role="alert">
+          <span className={styles.alertTitle}>O contato não foi enviado</span>
+          {error.charAt(0).toUpperCase() + error.slice(1)}.
         </p>
       ) : null}
       <div>
-        <button type="submit" className={styles.send} disabled={sending}>
-          {sending ? "Enviando…" : "Enviar contato"}
+        <button type="submit" className={styles.btnPrimary} disabled={sending}>
+          {sending ? "Solicitando…" : "Solicitar contato"}
         </button>
       </div>
     </form>
@@ -184,7 +225,9 @@ export function SiteChat() {
         ...current,
         {
           role: "assistant",
-          blocks: ["Não consegui responder agora. Confira sua conexão e tente de novo."],
+          blocks: [
+            "A conexão falhou antes da resposta. Confira sua internet e pergunte de novo.",
+          ],
         },
       ]);
     } finally {
@@ -199,14 +242,14 @@ export function SiteChat() {
     <>
       <header className={styles.header}>
         <div className={styles.headerInner}>
-          {/* eslint-disable-next-line @next/next/no-img-element -- SVG estático da marca */}
-          <img className={styles.logo} src="/brand/logo.svg" alt="Invent Software" />
+          <Logo />
+          <span className={styles.divider} aria-hidden="true" />
           <span className={styles.product}>IA da Reforma Tributária</span>
           <span className={styles.spacer} />
           {contact === "closed" ? (
             <button
               type="button"
-              className={styles.ghostButton}
+              className={styles.btnSecondary}
               onClick={() => setContact("open")}
             >
               Falar com especialista
@@ -219,37 +262,45 @@ export function SiteChat() {
         <div className={styles.column} style={{ flex: 1 }}>
           {empty ? (
             <section className={styles.hero}>
-              <span className={styles.eyebrow}>Invent Software · Reforma Tributária</span>
+              <span className={styles.eyebrow}>
+                IA da Reforma Tributária, por Invent Software
+              </span>
               <h1 className={styles.title}>
-                Tire suas dúvidas sobre a{" "}
-                <span className={styles.titleMark}>Reforma Tributária</span>
+                Entenda a <span className={styles.titleMark}>Reforma Tributária</span> e
+                prepare sua empresa
               </h1>
               <p className={styles.lead}>
-                IBS, CBS, Imposto Seletivo, transição, nota fiscal e créditos. A IA
-                responde com base na legislação e no conhecimento do time fiscal da
+                Pergunte sobre CBS, IBS, Imposto Seletivo, transição, NF-e e créditos. A
+                IA responde com base na legislação e no conhecimento do time fiscal da
                 Invent.
               </p>
-              <div className={styles.sources} aria-label="Base da IA">
-                <span>EC 132/2023</span>
-                <span>LC 214/2025</span>
-                <span>Atualizada todo dia nos sites oficiais</span>
+              <div className={styles.sources}>
+                <span>Base oficial:</span>
+                <span className={styles.norm}>EC 132/2023</span>
+                <span className={styles.norm}>LC 214/2025</span>
+                <span>conferida todo dia nos sites do governo</span>
               </div>
             </section>
           ) : null}
 
           {empty ? (
-            <div className={styles.suggestions}>
-              {SUGESTOES.map((sugestao) => (
-                <button
-                  key={sugestao}
-                  type="button"
-                  className={styles.suggestion}
-                  onClick={() => void ask(sugestao)}
-                >
-                  {sugestao}
-                </button>
-              ))}
-            </div>
+            <section aria-labelledby="sugestoes">
+              <h2 id="sugestoes" className={styles.suggestionsTitle}>
+                Comece por uma destas perguntas
+              </h2>
+              <div className={styles.suggestions}>
+                {SUGESTOES.map((sugestao) => (
+                  <button
+                    key={sugestao}
+                    type="button"
+                    className={styles.suggestion}
+                    onClick={() => void ask(sugestao)}
+                  >
+                    {sugestao}
+                  </button>
+                ))}
+              </div>
+            </section>
           ) : null}
 
           <div className={styles.thread} aria-live="polite">
@@ -263,7 +314,7 @@ export function SiteChat() {
               ) : (
                 <div key={index} className={styles.row}>
                   <span className={styles.avatar} aria-hidden="true">
-                    IA
+                    <img src="/brand/invent-simbolo.png" alt="" />
                   </span>
                   <div className={styles.stack}>
                     {entry.blocks.map((block, blockIndex) => (
@@ -281,15 +332,13 @@ export function SiteChat() {
             {thinking ? (
               <div className={styles.row}>
                 <span className={styles.avatar} aria-hidden="true">
-                  IA
+                  <img src="/brand/invent-simbolo.png" alt="" />
                 </span>
                 <div className={`${styles.bubble} ${styles.bubbleBot} ${styles.typing}`}>
                   <i />
                   <i />
                   <i />
-                  <span className="sr-only" style={{ position: "absolute", left: -9999 }}>
-                    A IA está escrevendo
-                  </span>
+                  <span className={styles.srOnly}>A IA está escrevendo a resposta</span>
                 </div>
               </div>
             ) : null}
@@ -309,6 +358,9 @@ export function SiteChat() {
                 void ask(question);
               }}
             >
+              <label htmlFor="pergunta" className={styles.srOnly}>
+                Sua pergunta sobre a Reforma Tributária
+              </label>
               <textarea
                 id="pergunta"
                 ref={input}
@@ -323,19 +375,18 @@ export function SiteChat() {
                 }}
                 rows={1}
                 maxLength={1000}
-                placeholder="Pergunte sobre a Reforma…"
-                aria-label="Sua pergunta"
+                placeholder="Pergunte sobre a Reforma Tributária"
               />
               <button
                 type="submit"
-                className={styles.send}
+                className={styles.btnPrimary}
                 disabled={thinking || !question.trim()}
               >
-                Enviar
+                Perguntar
               </button>
             </form>
             <p className={styles.fineprint}>
-              Respostas geradas por IA podem conter erros: confirme com seu contador. Não
+              Respostas geradas por IA podem conter erros. Confirme com seu contador e não
               informe dados pessoais ou sigilosos na conversa.
             </p>
           </div>
