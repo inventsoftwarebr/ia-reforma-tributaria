@@ -116,6 +116,8 @@ export interface PromptState {
   canOfferSimulator: boolean;
   simulatorAlreadyAccepted: boolean;
   today: string;
+  /** Onde a conversa acontece. Padrão: WhatsApp. */
+  channel?: "whatsapp" | "site";
 }
 
 export interface BuildPromptInput {
@@ -135,6 +137,15 @@ export function buildSystemPrompt({
     policy,
     `## Hoje\n\nA data de hoje é ${state.today} (America/Sao_Paulo).`,
   ];
+
+  if (state.channel === "site") {
+    blocks.push(`## Canal
+
+Esta conversa acontece no chat do site da Invent, não no WhatsApp: não diga "aqui no WhatsApp".
+Quando a pessoa pedir um especialista e você chamar \`solicitar_contato_humano\`, diga que vai
+abrir um formulário rápido logo abaixo para ela deixar o contato, e que o time da Invent retorna.
+Não peça nome, e-mail ou telefone pela conversa.`);
+  }
 
   blocks.push(knowledgeModeBlock(mode));
   blocks.push(`## Trechos da base\n\n${context}`);

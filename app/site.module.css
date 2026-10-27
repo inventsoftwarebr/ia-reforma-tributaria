@@ -1,0 +1,465 @@
+/*
+ * Chat público da IA da Reforma Tributária.
+ *
+ * MARCA: as cores da Invent ficam todas nos tokens --brand* abaixo, e o logo em
+ * public/brand/logo.svg. Para aplicar a identidade oficial, troque só esses
+ * dois lugares.
+ *
+ * Layout: cabeçalho fixo, conversa numa coluna de leitura, campo de pergunta
+ * preso embaixo. Sem conversa ainda, a área mostra a apresentação e sugestões.
+ */
+.site {
+  --brand: #0b4ea2;
+  --brand-strong: #083a7a;
+  --brand-soft: #e8f0fb;
+  --brand-ink: #ffffff;
+  --accent: #14a38b;
+
+  --bg: #f5f7fb;
+  --surface: #ffffff;
+  --fg: #0f1b2d;
+  --muted: #5a6478;
+  --line: #e1e6ef;
+  --danger: #b42318;
+  --ok: #157f52;
+
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-site), "Segoe UI", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+@media (prefers-color-scheme: dark) {
+  .site {
+    --brand: #6ea8fe;
+    --brand-strong: #9cc3ff;
+    --brand-soft: #16263d;
+    --brand-ink: #0b1220;
+    --accent: #3ccfb3;
+    --bg: #0b1120;
+    --surface: #121a2b;
+    --fg: #e8edf5;
+    --muted: #9aa6ba;
+    --line: #233049;
+    --danger: #f2837a;
+    --ok: #5dd39e;
+  }
+  .logo {
+    filter: brightness(0) invert(1);
+  }
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+
+.headerInner,
+.column {
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-block: 12px;
+}
+
+.logo {
+  height: 30px;
+  width: auto;
+  display: block;
+}
+
+.product {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.ghostButton {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ghostButton:hover {
+  border-color: var(--brand);
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.hero {
+  display: grid;
+  gap: 14px;
+  padding-block: clamp(32px, 8vh, 72px) 24px;
+}
+
+.eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(30px, 6vw, 46px);
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.titleMark {
+  color: var(--brand);
+}
+
+.lead {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--muted);
+  font-size: 17px;
+}
+
+.sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sources span {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: var(--surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.suggestions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  padding-block: 8px 24px;
+}
+
+.suggestion {
+  font: inherit;
+  text-align: left;
+  font-size: 15px;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.suggestion:hover {
+  border-color: var(--brand);
+  transform: translateY(-1px);
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-block: 24px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.rowUser {
+  justify-content: flex-end;
+}
+
+.avatar {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-size: 12px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(86%, 640px);
+  min-width: 0;
+}
+
+.bubble {
+  padding: 11px 15px;
+  border-radius: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bubbleBot {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 6px;
+}
+
+.bubbleUser {
+  background: var(--brand);
+  color: var(--brand-ink);
+  border-bottom-right-radius: 6px;
+  max-width: min(86%, 640px);
+}
+
+.bubble a {
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.typing {
+  display: inline-flex;
+  gap: 4px;
+  padding: 14px 16px;
+}
+.typing i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: blink 1.2s infinite ease-in-out;
+}
+.typing i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.composerWrap {
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+}
+
+.composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 8px 8px 8px 16px;
+  box-shadow: 0 8px 24px -16px rgb(15 27 45 / 0.35);
+}
+.composer:focus-within {
+  border-color: var(--brand);
+}
+
+.input::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  outline: none;
+  resize: none;
+  padding: 8px 0;
+  max-height: 160px;
+}
+
+.send {
+  flex: none;
+  font: inherit;
+  font-weight: 700;
+  color: var(--brand-ink);
+  background: var(--brand);
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fineprint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.field input,
+.field textarea {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 12px;
+  width: 100%;
+}
+.field input:focus,
+.field textarea:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: 0;
+}
+
+.consent {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.consent input {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  flex: none;
+  accent-color: var(--brand);
+}
+
+.honeypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.success {
+  margin: 0;
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.footer {
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+}
+.footer .headerInner {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.footer a {
+  color: var(--muted);
+}
+
+.send:focus-visible,
+.suggestion:focus-visible,
+.ghostButton:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing i,
+  .suggestion {
+    animation: none;
+    transition: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .product {
+    display: none;
+  }
+}

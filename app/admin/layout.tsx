@@ -11,6 +11,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         <span className="brand">IA da Reforma Tributária</span>
         <Link href="/admin">Painel</Link>
         <Link href="/admin/conversas">Conversas</Link>
+        <Link href="/admin/leads">Contatos do site</Link>
         <Link href="/admin/base">Base</Link>
         <Link href="/admin/prompt">Prompt</Link>
         <Link href="/admin/simulador">Simulador</Link>

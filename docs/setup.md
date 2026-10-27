@@ -34,7 +34,7 @@ senhas — nada em e-mail ou WhatsApp.
    antigo sem ela, use a `anon` da aba *Legacy*. A **secret key** (`sb_secret_...` /
    `service_role`) **não é usada**: não copie para lugar nenhum.
 4. **SQL Editor → New query** → cole o conteúdo de `db/bootstrap.sql` (no GitHub, **Copy raw
-   file**) → **Run**. Isso cria as 12 tabelas, o pgvector, os índices, a função de busca e as
+   file**) → **Run**. Isso cria as 14 tabelas, o pgvector, os índices, a função de busca e as
    políticas de segurança, e já registra a migration. Rodar de novo por engano aborta com
    "Banco já inicializado" em vez de estragar algo.
 5. **Conferir:** nova query com o conteúdo de `scripts/check-supabase.sql` → **Run**. São 9

@@ -248,6 +248,58 @@ insert into "drizzle"."__drizzle_migrations" ("hash", "created_at")
 values ('46c70b783aa6f9796206dad1fd85962594d6d662c8b8bd6a503ed4230500e5a1', 1793024565505);
 
 -- -----------------------------------------------------------------------------
+-- migration 0002_web_chat
+-- -----------------------------------------------------------------------------
+CREATE TABLE "web_leads" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" text NOT NULL,
+	"email" text NOT NULL,
+	"phone" text,
+	"company" text,
+	"message" text,
+	"consent_text" text NOT NULL,
+	"consent_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"status" text DEFAULT 'novo' NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "web_usage" (
+	"key" text NOT NULL,
+	"day" date NOT NULL,
+	"count" integer DEFAULT 0 NOT NULL,
+	CONSTRAINT "web_usage_key_day_pk" PRIMARY KEY("key","day")
+);
+--> statement-breakpoint
+CREATE INDEX "web_leads_created_idx" ON "web_leads" USING btree ("created_at");--> statement-breakpoint
+-- RLS no mesmo passo da criação: em produção, só as migrations rodam no deploy
+-- (db/rls.sql roda uma vez, no bootstrap). Default deny; o app lê pela conexão
+-- de serviço, que ignora RLS.
+ALTER TABLE "web_leads" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "web_leads" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "web_usage" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "web_usage" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+-- Políticas só se as funções de papel já existem: num banco novo, o bootstrap
+-- roda esta migration antes de db/functions.sql e db/rls.sql, que as criam
+-- depois (com as mesmas políticas).
+DO $$
+BEGIN
+  IF to_regprocedure('public.is_admin()') IS NOT NULL THEN
+    DROP POLICY IF EXISTS "web_leads_admin_all" ON public.web_leads;
+    CREATE POLICY "web_leads_admin_all" ON public.web_leads
+      FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+    DROP POLICY IF EXISTS "web_leads_select_agent" ON public.web_leads;
+    CREATE POLICY "web_leads_select_agent" ON public.web_leads
+      FOR SELECT USING (public.is_agent());
+    DROP POLICY IF EXISTS "web_usage_admin_all" ON public.web_usage;
+    CREATE POLICY "web_usage_admin_all" ON public.web_usage
+      FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+  END IF;
+END $$;
+
+insert into "drizzle"."__drizzle_migrations" ("hash", "created_at")
+values ('8e5289f75e44a0bf7d0d871df72321612815b3fd879e1b6977540a61383e7d53', 1793064414856);
+
+-- -----------------------------------------------------------------------------
 -- db/functions.sql — idempotente, roda de novo com pnpm db:sql
 -- -----------------------------------------------------------------------------
 -- =============================================================================
@@ -460,7 +512,7 @@ begin
   foreach t in array array[
     'profiles', 'contacts', 'conversations', 'messages', 'conversation_state',
     'kb_sources', 'kb_chunks', 'prompt_versions', 'ai_runs', 'usage_counters',
-    'job_failures', 'hubspot_outbox'
+    'job_failures', 'hubspot_outbox', 'web_leads', 'web_usage'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -540,7 +592,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['ai_runs', 'usage_counters', 'job_failures', 'hubspot_outbox']
+  foreach t in array array['ai_runs', 'usage_counters', 'job_failures', 'hubspot_outbox', 'web_leads', 'web_usage']
   loop
     execute format('drop policy if exists %I on public.%I', t || '_admin_all', t);
     execute format(
@@ -552,6 +604,11 @@ end $$;
 
 -- Atendente enxerga a telemetria da conversa que está atendendo, para saber o
 -- que o bot respondeu antes de assumir.
+-- Atendente vê os pedidos de contato do site para retornar.
+drop policy if exists "web_leads_select_agent" on public.web_leads;
+create policy "web_leads_select_agent" on public.web_leads
+  for select using (public.is_agent());
+
 drop policy if exists "ai_runs_select_agent" on public.ai_runs;
 create policy "ai_runs_select_agent" on public.ai_runs
   for select using (public.is_agent());

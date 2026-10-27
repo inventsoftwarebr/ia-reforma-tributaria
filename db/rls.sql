@@ -100,7 +100,7 @@ begin
   foreach t in array array[
     'profiles', 'contacts', 'conversations', 'messages', 'conversation_state',
     'kb_sources', 'kb_chunks', 'prompt_versions', 'ai_runs', 'usage_counters',
-    'job_failures', 'hubspot_outbox'
+    'job_failures', 'hubspot_outbox', 'web_leads', 'web_usage'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -180,7 +180,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['ai_runs', 'usage_counters', 'job_failures', 'hubspot_outbox']
+  foreach t in array array['ai_runs', 'usage_counters', 'job_failures', 'hubspot_outbox', 'web_leads', 'web_usage']
   loop
     execute format('drop policy if exists %I on public.%I', t || '_admin_all', t);
     execute format(
@@ -192,6 +192,11 @@ end $$;
 
 -- Atendente enxerga a telemetria da conversa que está atendendo, para saber o
 -- que o bot respondeu antes de assumir.
+-- Atendente vê os pedidos de contato do site para retornar.
+drop policy if exists "web_leads_select_agent" on public.web_leads;
+create policy "web_leads_select_agent" on public.web_leads
+  for select using (public.is_agent());
+
 drop policy if exists "ai_runs_select_agent" on public.ai_runs;
 create policy "ai_runs_select_agent" on public.ai_runs
   for select using (public.is_agent());

@@ -63,6 +63,7 @@ const NO_DETAILS = {
 export async function simulateTurn(
   input: SimulateInput,
   userId: string,
+  channel: "whatsapp" | "site" = "whatsapp",
 ): Promise<SimulateResult> {
   // Mesma prioridade do WhatsApp: pedido de descadastro não passa pelo modelo.
   if (isOptOutRequest(input.question)) {
@@ -85,6 +86,7 @@ export async function simulateTurn(
         isFirstInteraction: input.state.isFirstInteraction,
         canOfferSimulator: input.state.canOfferSimulator,
         simulatorAlreadyAccepted: input.state.simulatorAlreadyAccepted,
+        channel,
       },
       sandbox: true,
     });

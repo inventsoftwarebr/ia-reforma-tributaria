@@ -338,6 +338,46 @@ export const jobFailures = pgTable(
   (t) => [index("job_failures_open_idx").on(t.resolvedAt, t.createdAt)],
 );
 
+// =============================================================================
+// Site público (chat na web)
+// =============================================================================
+
+/**
+ * Pedido de contato feito no chat público. Dado pessoal: só entra com
+ * consentimento, e o texto do consentimento aceito fica gravado junto.
+ */
+export const webLeads = pgTable(
+  "web_leads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    phone: text("phone"),
+    company: text("company"),
+    /** O que a pessoa quer, nas palavras dela ou resumido pela IA. */
+    message: text("message"),
+    consentText: text("consent_text").notNull(),
+    consentAt: timestamp("consent_at", { withTimezone: true }).notNull().defaultNow(),
+    status: text("status").notNull().default("novo"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("web_leads_created_idx").on(t.createdAt)],
+);
+
+/**
+ * Limite de uso do chat público por visitante e por dia. A chave é um hash do
+ * IP com o dia — não guarda IP nem permite seguir a pessoa entre dias.
+ */
+export const webUsage = pgTable(
+  "web_usage",
+  {
+    key: text("key").notNull(),
+    day: date("day").notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.day] })],
+);
+
 /** Outbox do HubSpot: integração pode falhar sem perder lead. */
 export const hubspotOutbox = pgTable(
   "hubspot_outbox",

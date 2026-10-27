@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { conversations, jobFailures, kbSources, promptVersions } from "@/db/schema";
+import {
+  conversations,
+  jobFailures,
+  kbSources,
+  promptVersions,
+  webLeads,
+} from "@/db/schema";
 import { appUrl, serverEnv } from "@/lib/env";
 import { logInfo } from "@/lib/observability/logger";
 import {
@@ -12,7 +18,11 @@ import {
   simulateInputSchema,
   simulateTurn,
 } from "@/lib/simulator/run";
-import { configProblem, configureWebhook, webhookCheck } from "@/lib/whatsapp/evolution-admin";
+import {
+  configProblem,
+  configureWebhook,
+  webhookCheck,
+} from "@/lib/whatsapp/evolution-admin";
 import { evolutionConfig, webhookTarget } from "@/lib/whatsapp/status";
 import { requireAdmin, requireAgent } from "./auth";
 
@@ -60,7 +70,10 @@ export async function activatePromptVersion(id: string): Promise<void> {
       .set({ active: false })
       .where(eq(promptVersions.key, target.key));
 
-    await tx.update(promptVersions).set({ active: true }).where(eq(promptVersions.id, id));
+    await tx
+      .update(promptVersions)
+      .set({ active: true })
+      .where(eq(promptVersions.id, id));
 
     logInfo("admin.prompt_activated", {
       key: target.key,
@@ -145,7 +158,10 @@ export async function configureWhatsAppWebhook(formData: FormData): Promise<neve
   }
 
   logInfo("admin.whatsapp_webhook", { ok: resultado.ok, by: user.id });
-  const query = new URLSearchParams({ resultado: resultado.ok ? "ok" : "erro", msg: resultado.text });
+  const query = new URLSearchParams({
+    resultado: resultado.ok ? "ok" : "erro",
+    msg: resultado.text,
+  });
   redirect(`/admin/whatsapp?${query.toString()}`);
 }
 
@@ -154,4 +170,15 @@ export async function simulateQuestion(payload: unknown): Promise<SimulateResult
   const user = await requireAgent();
   const input = simulateInputSchema.parse(payload);
   return simulateTurn(input, user.id);
+}
+
+/** Marca o pedido de contato do site como respondido (ou volta para novo). */
+export async function setWebLeadStatus(
+  id: string,
+  status: "novo" | "respondido",
+): Promise<void> {
+  const user = await requireAgent();
+  await db.update(webLeads).set({ status }).where(eq(webLeads.id, id));
+  logInfo("admin.web_lead_status", { id, status, by: user.id });
+  revalidatePath("/admin/leads");
 }

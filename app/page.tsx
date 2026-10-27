@@ -1,32 +1,34 @@
-import Link from "next/link";
+import type { Metadata } from "next";
+import { Plus_Jakarta_Sans } from "next/font/google";
+import { SiteChat } from "./SiteChat";
+import styles from "./site.module.css";
+
+/**
+ * Chat público da IA da Reforma Tributária, no site. Mesma IA, base e regras
+ * do WhatsApp; sem login, com limite de uso e sem gravar a conversa — só o
+ * pedido de contato, com consentimento (lib/public/actions.ts).
+ */
+
+const font = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-site",
+  display: "swap",
+});
+
+// A resposta da IA (busca, ferramentas, modelo) pode passar de 10 segundos.
+export const maxDuration = 60;
+
+export const metadata: Metadata = {
+  title: "IA da Reforma Tributária | Invent Software",
+  description:
+    "Tire suas dúvidas sobre a Reforma Tributária: IBS, CBS, Imposto Seletivo, transição e nota fiscal, com base na legislação e no time fiscal da Invent Software.",
+};
 
 export default function Home() {
   return (
-    <main className="shell">
-      <h1>IA da Reforma Tributária</h1>
-      <p className="muted">
-        Serviço da Invent Software. O atendimento acontece no WhatsApp; esta página existe para
-        operação.
-      </p>
-
-      <h2>Endpoints</h2>
-      <ul>
-        <li>
-          <code>POST /api/whatsapp/inbound</code> — webhook do gateway, exige segredo
-        </li>
-        <li>
-          <code>POST /api/jobs/turn</code> — worker do turno, exige assinatura da fila
-        </li>
-        <li>
-          <code>GET /api/cron/outbox</code> — drenagem do HubSpot, exige segredo do cron
-        </li>
-      </ul>
-
-      <h2>Console</h2>
-      <p>
-        <Link href="/admin">Abrir o console</Link> para conversas, base de conhecimento, prompt e
-        métricas.
-      </p>
-    </main>
+    <div className={`${styles.site} ${font.variable}`}>
+      <SiteChat />
+    </div>
   );
 }

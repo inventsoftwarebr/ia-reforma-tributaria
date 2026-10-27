@@ -10,6 +10,7 @@ import {
   kbSources,
   messages,
   promptVersions,
+  webLeads,
 } from "@/db/schema";
 import { brazilDay } from "@/lib/time";
 
@@ -349,4 +350,33 @@ export async function activeSourceCount(): Promise<number> {
     .from(kbSources)
     .where(eq(kbSources.status, "active"));
   return Number(row?.total ?? 0);
+}
+
+export interface WebLeadRow {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  company: string | null;
+  message: string | null;
+  status: string;
+  createdAt: Date;
+}
+
+/** Pedidos de contato do chat do site, mais recentes primeiro. */
+export async function listWebLeads(limit = 200): Promise<WebLeadRow[]> {
+  return db
+    .select({
+      id: webLeads.id,
+      name: webLeads.name,
+      email: webLeads.email,
+      phone: webLeads.phone,
+      company: webLeads.company,
+      message: webLeads.message,
+      status: webLeads.status,
+      createdAt: webLeads.createdAt,
+    })
+    .from(webLeads)
+    .orderBy(desc(webLeads.createdAt))
+    .limit(limit);
 }

@@ -15,6 +15,13 @@
       "when": 1793024565505,
       "tag": "0001_kb_auto_update",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793064414856,
+      "tag": "0002_web_chat",
+      "breakpoints": true
     }
   ]
 }

@@ -9,7 +9,8 @@ with
 esperadas(nome) as (
   values ('profiles'), ('contacts'), ('conversations'), ('messages'),
          ('conversation_state'), ('kb_sources'), ('kb_chunks'), ('prompt_versions'),
-         ('ai_runs'), ('usage_counters'), ('job_failures'), ('hubspot_outbox')
+         ('ai_runs'), ('usage_counters'), ('job_failures'), ('hubspot_outbox'),
+         ('web_leads'), ('web_usage')
 ),
 tabelas as (
   select e.nome, c.relrowsecurity as rls, c.relforcerowsecurity as forcado,
@@ -27,13 +28,13 @@ funcoes(nome) as (
 ),
 checagens(ordem, verificacao, resultado, ok) as (
   select 1, 'tabelas criadas',
-         (select count(*) from tabelas where rls is not null) || ' de 12',
-         (select count(*) from tabelas where rls is not null) = 12
+         (select count(*) from tabelas where rls is not null) || ' de 14',
+         (select count(*) from tabelas where rls is not null) = 14
 
   union all
   select 2, 'segurança de linha (RLS) ligada e forçada',
-         (select count(*) from tabelas where rls and forcado) || ' de 12',
-         (select count(*) from tabelas where rls and forcado) = 12
+         (select count(*) from tabelas where rls and forcado) || ' de 14',
+         (select count(*) from tabelas where rls and forcado) = 14
 
   union all
   select 3, 'tabelas sem política de acesso',

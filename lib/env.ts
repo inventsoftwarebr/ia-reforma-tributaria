@@ -78,6 +78,9 @@ const serverSchema = z.object({
    * artigo, número ou data de memória). "estrito": sem trecho, recusa.
    */
   AI_KNOWLEDGE_MODE: z.enum(["geral", "estrito"]).default("geral"),
+  /** Chat público do site: perguntas por visitante por dia e teto diário total. */
+  PUBLIC_CHAT_VISITOR_DAILY: z.coerce.number().int().min(1).default(25),
+  PUBLIC_CHAT_DAILY_LIMIT: z.coerce.number().int().min(1).default(1500),
 
   RATE_LIMIT_MESSAGES_PER_DAY: z.coerce.number().int().positive().default(50),
 

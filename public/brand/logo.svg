@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="168" height="36" viewBox="0 0 168 36" role="img" aria-label="Invent Software">
+  <!-- Provisório: substituir pelo logo oficial da Invent (mesmo nome de arquivo). -->
+  <rect x="0" y="4" width="28" height="28" rx="7" fill="#0b4ea2"/>
+  <path d="M10 11h8v3h-2.5v8H18v3h-8v-3h2.5v-8H10z" fill="#ffffff"/>
+  <text x="38" y="24" font-family="Plus Jakarta Sans, Segoe UI, Arial, sans-serif" font-size="19" font-weight="700" fill="#0f1b2d">invent</text>
+  <text x="104" y="24" font-family="Plus Jakarta Sans, Segoe UI, Arial, sans-serif" font-size="13" font-weight="500" fill="#5a6478">software</text>
+</svg>
