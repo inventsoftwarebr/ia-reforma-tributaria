@@ -82,6 +82,28 @@ export default async function WhatsApp({
         </tbody>
       </table>
 
+      {status.relatorio ? (
+        <details open style={{ marginTop: "1rem" }}>
+          <summary>
+            <strong>Relatório técnico para o TI</strong>{" "}
+            <span className="muted">(selecione, copie e envie)</span>
+          </summary>
+          <pre
+            style={{
+              whiteSpace: "pre-wrap",
+              fontSize: "0.85rem",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              padding: "0.75rem",
+              marginTop: "0.5rem",
+            }}
+          >
+            {status.relatorio}
+          </pre>
+        </details>
+      ) : null}
+
       {podeConfigurar ? (
         <form action={configureWhatsAppWebhook} style={{ marginTop: "1rem" }}>
           <p>

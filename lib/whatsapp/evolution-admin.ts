@@ -27,6 +27,12 @@ export interface WebhookSnapshot {
   byEvents: boolean;
 }
 
+/**
+ * User-Agent próprio em toda chamada à Evolution: com ele, quem administra o
+ * firewall (Cloudflare) consegue criar uma regra que libere só este sistema.
+ */
+export const EVOLUTION_USER_AGENT = "InventIA-ReformaTributaria/1.0";
+
 export type Check = { ok: true; text: string } | { ok: false; text: string };
 
 type FetchLike = typeof fetch;
@@ -84,12 +90,13 @@ async function call(
   path: string,
   fetchImpl: FetchLike,
   init: { method?: string; body?: unknown } = {},
-): Promise<{ status: number; body: unknown }> {
+): Promise<{ status: number; body: unknown; blockedByCloudflare: boolean }> {
   const response = await fetchImpl(endpoint(config, path), {
     method: init.method ?? "GET",
     headers: {
       apikey: config.apiKey,
       "content-type": "application/json",
+      "user-agent": EVOLUTION_USER_AGENT,
       ...authHeaders(config),
     },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
@@ -97,7 +104,11 @@ async function call(
     cache: "no-store",
   });
   const body: unknown = await response.json().catch(() => null);
-  return { status: response.status, body };
+  const blockedByCloudflare =
+    (response.status === 403 || response.status === 503) &&
+    (/cloudflare/i.test(response.headers.get("server") ?? "") ||
+      response.headers.has("cf-mitigated"));
+  return { status: response.status, body, blockedByCloudflare };
 }
 
 /** Pendente, URL sem http ou instância vazia: nem adianta chamar. */
@@ -155,7 +166,10 @@ export async function identifyServer(
   const { url, authorization } = splitBasicAuth(baseUrl);
   try {
     const response = await fetchImpl(`${url}/`, {
-      headers: authorization ? { authorization } : {},
+      headers: {
+        "user-agent": EVOLUTION_USER_AGENT,
+        ...(authorization ? { authorization } : {}),
+      },
       signal: AbortSignal.timeout(10_000),
       cache: "no-store",
     });
@@ -353,7 +367,17 @@ export async function webhookCheck(
   fetchImpl: FetchLike = fetch,
 ): Promise<Check & { atual?: string }> {
   try {
-    const { status, body } = await call(config, "/webhook/find", fetchImpl);
+    const { status, body, blockedByCloudflare } = await call(
+      config,
+      "/webhook/find",
+      fetchImpl,
+    );
+    if (blockedByCloudflare) {
+      return {
+        ok: false,
+        text: "não verificado: o mesmo bloqueio do Cloudflare da linha Conexão (não é problema de chave)",
+      };
+    }
     if (status !== 200) return { ok: false, text: statusFailure(status) };
     const current = parseWebhook(body);
     const check = evaluateWebhook(current, appUrl, secret);
@@ -412,4 +436,77 @@ export async function configureWebhook(
     return { ok: false, text: await keyRejected(config, fetchImpl) };
   }
   return { ok: false, text: statusFailure(lastStatus) };
+}
+
+/** Uma chamada como ela chegou, com o que o firewall devolve para rastrear. */
+async function probe(
+  url: string,
+  headers: Record<string, string>,
+  fetchImpl: FetchLike,
+): Promise<string> {
+  const at = new Date();
+  try {
+    const response = await fetchImpl(url, {
+      headers,
+      signal: AbortSignal.timeout(10_000),
+      cache: "no-store",
+    });
+    const parts = [`HTTP ${response.status}`];
+    for (const header of ["server", "cf-ray", "cf-mitigated", "cf-cache-status"]) {
+      const value = response.headers.get(header);
+      if (value) parts.push(`${header}: ${value}`);
+    }
+    const text = await response.text().catch(() => "");
+    const title = /<title>([^<]{0,80})<\/title>/i.exec(text)?.[1];
+    if (title) parts.push(`página: "${title.trim()}"`);
+    return `${parts.join(" | ")} | às ${at.toISOString()}`;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return `sem resposta (${reason.slice(0, 80)}) | às ${at.toISOString()}`;
+  }
+}
+
+/**
+ * Relatório para quem administra o domínio da Evolution: o que foi pedido, de
+ * onde, quando e o que o firewall respondeu (Ray ID do Cloudflare incluído).
+ * Não contém chave nem senha.
+ */
+export async function blockReport(
+  config: EvolutionConfig,
+  region: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<string> {
+  const { url, authorization } = splitBasicAuth(config.baseUrl);
+  const base = {
+    "user-agent": EVOLUTION_USER_AGENT,
+    ...(authorization ? { authorization } : {}),
+  };
+  const instancePath = `/instance/connectionState/${encodeURIComponent(config.instance)}`;
+  const [root, instance] = await Promise.all([
+    probe(`${url}/`, base, fetchImpl),
+    probe(`${url}${instancePath}`, { ...base, apikey: config.apiKey }, fetchImpl),
+  ]);
+  const agora = new Date();
+  const brasilia = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    dateStyle: "short",
+    timeStyle: "medium",
+  }).format(agora);
+
+  return [
+    "Bloqueio nas chamadas da IA da Reforma Tributária para a Evolution API",
+    `Gerado em: ${brasilia} (Brasília) / ${agora.toISOString()} (UTC)`,
+    `Domínio: ${new URL(url).host}`,
+    `Origem: funções da Vercel, região ${region} (IPs dinâmicos, sem IP fixo)`,
+    `User-Agent enviado: ${EVOLUTION_USER_AGENT}`,
+    "",
+    `1) GET / -> ${root}`,
+    `2) GET ${instancePath} (com cabeçalho apikey) -> ${instance}`,
+    "",
+    "O que precisa: liberar no Cloudflare as chamadas de servidor para este subdomínio.",
+    'Opções: (a) deixar o registro DNS do subdomínio como "DNS only" (nuvem cinza);',
+    "(b) desligar o Bot Fight Mode / desafio para ele; ou (c) regra de WAF que pule as",
+    "proteções quando o User-Agent for o acima e houver o cabeçalho apikey. No plano",
+    "gratuito do Cloudflare o Bot Fight Mode não aceita exceção por regra: (a) ou (b).",
+  ].join("\n");
 }

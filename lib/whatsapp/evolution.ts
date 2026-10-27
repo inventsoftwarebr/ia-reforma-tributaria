@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { allowedInstances, serverEnv } from "@/lib/env";
 import { logWarn } from "@/lib/observability/logger";
-import { splitBasicAuth } from "./evolution-admin";
+import { EVOLUTION_USER_AGENT, splitBasicAuth } from "./evolution-admin";
 import { parseEvolutionWebhook } from "./normalize";
 import type { ParseResult, SendTextResult, WhatsAppGateway } from "./types";
 
@@ -34,6 +34,7 @@ async function attempt(path: string, body: unknown): Promise<unknown> {
     headers: {
       "content-type": "application/json",
       apikey: serverEnv().EVOLUTION_API_KEY,
+      "user-agent": EVOLUTION_USER_AGENT,
       ...basicAuthHeader(),
     },
     body: JSON.stringify(body),

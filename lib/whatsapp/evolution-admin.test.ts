@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  EVOLUTION_USER_AGENT,
+  blockReport,
   configProblem,
   configureWebhook,
   connectionCheck,
@@ -10,6 +12,7 @@ import {
   parseWebhook,
   splitBasicAuth,
   webhookBodies,
+  webhookCheck,
 } from "./evolution-admin";
 
 const CONFIG = {
@@ -317,5 +320,47 @@ describe("bloqueio do Cloudflare", () => {
     expect((await connectionCheck(CONFIG, fake)).text).toMatch(
       /resposta 403, servidor "nginx", início: "Forbidden by policy"/,
     );
+  });
+});
+
+describe("relatório para o TI", () => {
+  const bloqueio: typeof fetch = async () =>
+    new Response(
+      "<!DOCTYPE html><html><head><title>Just a moment...</title></head></html>",
+      {
+        status: 403,
+        headers: {
+          server: "cloudflare",
+          "cf-ray": "8f1a2b3c4d5e6f70-SEA",
+          "cf-mitigated": "challenge",
+          "content-type": "text/html",
+        },
+      },
+    );
+
+  it("traz Ray ID, desafio, região de origem e nunca a chave", async () => {
+    const report = await blockReport(CONFIG, "pdx1", bloqueio);
+    expect(report).toContain("cf-ray: 8f1a2b3c4d5e6f70-SEA");
+    expect(report).toContain("cf-mitigated: challenge");
+    expect(report).toContain('página: "Just a moment..."');
+    expect(report).toContain("região pdx1");
+    expect(report).toContain("/instance/connectionState/invent%20teste");
+    expect(report).toContain(EVOLUTION_USER_AGENT);
+    expect(report).not.toContain(CONFIG.apiKey);
+  });
+
+  it("linha do webhook aponta o mesmo bloqueio, não a chave", async () => {
+    const check = await webhookCheck(CONFIG, SITE, SEGREDO, bloqueio);
+    expect(check.text).toMatch(/mesmo bloqueio do Cloudflare/);
+  });
+
+  it("toda chamada se identifica pelo User-Agent", async () => {
+    let agente = "";
+    const fake: typeof fetch = async (_input, init) => {
+      agente = new Headers(init?.headers).get("user-agent") ?? "";
+      return json(200, { instance: { state: "open" } });
+    };
+    await connectionCheck(CONFIG, fake);
+    expect(agente).toBe(EVOLUTION_USER_AGENT);
   });
 });

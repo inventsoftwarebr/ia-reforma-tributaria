@@ -1,5 +1,6 @@
 import { appUrl, serverEnv } from "@/lib/env";
 import {
+  blockReport,
   type Check,
   configProblem,
   displayAddress,
@@ -60,6 +61,8 @@ export interface WhatsAppStatus {
   /** `atual`: destino configurado hoje, com token mascarado. */
   webhook: Check & { atual?: string };
   destino: Check;
+  /** Relatório técnico para o TI quando a conexão falha. */
+  relatorio?: string;
 }
 
 export async function whatsappStatus(): Promise<WhatsAppStatus> {
@@ -95,5 +98,8 @@ export async function whatsappStatus(): Promise<WhatsAppStatus> {
     connectionCheck(config),
     webhookCheck(config, appUrl(), env.EVOLUTION_WEBHOOK_SECRET),
   ]);
-  return { provedor: "evolution", endereco, conexao, webhook, destino };
+  const relatorio = conexao.ok
+    ? undefined
+    : await blockReport(config, process.env.VERCEL_REGION ?? "local");
+  return { provedor: "evolution", endereco, conexao, webhook, destino, relatorio };
 }
