@@ -69,9 +69,9 @@ export default async function Base() {
     <main>
       <h1>Base de conhecimento</h1>
       <p className="muted">
-        A IA só responde com o que está aqui — e cita a fonte. Normas vêm direto dos sites
-        oficiais e são conferidas todo dia; material da Invent entra pelo formulário.
-        Depois de adicionar, teste no <a href="/admin/simulador">Simulador</a>.
+        A IA prioriza o que está aqui e cita a fonte. Normas vêm direto dos sites oficiais
+        e são conferidas todo dia; material da Invent entra pelo formulário. Depois de
+        adicionar, teste no <a href="/admin/simulador">Simulador</a>.
       </p>
 
       <h2>Normas oficiais da Reforma</h2>
@@ -147,9 +147,8 @@ export default async function Base() {
 
       {fontes.length === 0 ? (
         <p className="notice" style={{ marginTop: "1rem" }}>
-          Nenhuma fonte indexada. Enquanto a base estiver vazia o agente recusa qualquer
-          pergunta que dependa de norma — é o comportamento correto, mas não atende
-          ninguém.
+          Nenhuma fonte indexada. Enquanto a base estiver vazia, a IA responde só com
+          conhecimento geral, sem citar norma da base. Importe as normas oficiais abaixo.
         </p>
       ) : (
         <table style={{ marginTop: "1rem" }}>

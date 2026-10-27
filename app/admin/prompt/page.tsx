@@ -21,7 +21,7 @@ export default async function Prompt() {
       <p className="muted">
         O que vive aqui é a <strong>política</strong>: tom, escopo, regras de citação. O contexto
         (trechos da base e estado da conversa) é montado em código e não pode ser afrouxado pelo
-        console — é de lá que os guard-rails dependem.
+        console, porque é dele que os guard-rails dependem.
       </p>
 
       {versoes.length === 0 ? (

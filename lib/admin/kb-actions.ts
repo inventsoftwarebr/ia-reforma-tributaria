@@ -61,7 +61,7 @@ function startMessage(outcome: PrepareOutcome): string {
   if (outcome.status === "unchanged") {
     return outcome.pending > 0
       ? "O texto não mudou; continuando a indexação que faltava."
-      : "O texto é igual ao que já está na base — nada a fazer.";
+      : "O texto é igual ao que já está na base. Nada a fazer.";
   }
   const reaproveitados =
     outcome.reused > 0
@@ -115,7 +115,7 @@ export async function addSource(formData: FormData): Promise<IngestStart> {
         return {
           ok: false,
           error:
-            "arquivo maior que 4 MB — para lei do Planalto, use a importação por link",
+            "arquivo maior que 4 MB; para lei do Planalto, use a importação por link",
         };
       }
       const kind = fileKind(file.name, file.type);

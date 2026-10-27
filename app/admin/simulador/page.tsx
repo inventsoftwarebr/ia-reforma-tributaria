@@ -16,7 +16,7 @@ export default async function SimuladorPage() {
       <h1>Simulador</h1>
       <p className="muted">
         Converse com a IA como um cliente faria no WhatsApp. É o mesmo caminho de verdade
-        — base de conhecimento, prompt ativo, modelo e regras de segurança —, mas nada é
+        (base de conhecimento, prompt ativo, modelo e regras de segurança), mas nada é
         enviado, gravado ou mandado ao HubSpot.
       </p>
       {fontes === 0 ? (

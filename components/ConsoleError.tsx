@@ -6,7 +6,7 @@
  */
 export function ConsoleError({ digest }: { digest?: string }) {
   return (
-    <main className="shell">
+    <main className="console shell">
       <h1>Não foi possível carregar o console</h1>
       <p className="notice" style={{ marginTop: "1rem" }}>
         O servidor não conseguiu buscar os dados. A causa mais comum é a conexão com o banco

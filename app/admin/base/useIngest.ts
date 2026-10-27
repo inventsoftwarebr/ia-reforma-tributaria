@@ -82,7 +82,7 @@ export function useIngest() {
         return;
       }
       message = step.paused
-        ? "O Gemini pediu uma pausa (limite de uso ou instabilidade) — continuando em 30 segundos. Pode deixar esta página aberta."
+        ? "O Gemini pediu uma pausa (limite de uso ou instabilidade). A indexação continua em 30 segundos. Pode deixar esta página aberta."
         : "Indexando…";
       setStatus({ phase: "indexing", done: total - remaining, total, message });
       if (step.paused)

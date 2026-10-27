@@ -1,27 +1,30 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { InventLogo } from "@/components/InventLogo";
 import { requireAgent } from "@/lib/admin/auth";
+import { AdminNav } from "./AdminNav";
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const user = await requireAgent();
 
   return (
-    <>
-      <nav className="nav">
-        <span className="brand">IA da Reforma Tributária</span>
-        <Link href="/admin">Painel</Link>
-        <Link href="/admin/conversas">Conversas</Link>
-        <Link href="/admin/leads">Contatos do site</Link>
-        <Link href="/admin/base">Base</Link>
-        <Link href="/admin/prompt">Prompt</Link>
-        <Link href="/admin/simulador">Simulador</Link>
-        <Link href="/admin/whatsapp">WhatsApp</Link>
+    <div className="console">
+      <nav className="nav" aria-label="Console">
+        <Link href="/admin" className="brand" aria-label="Painel do console">
+          <InventLogo />
+          <span className="divider" aria-hidden="true" />
+          <span className="product">IA da Reforma Tributária</span>
+        </Link>
+        <AdminNav />
         <span className="spacer" />
-        <span className="muted" style={{ fontSize: "0.85rem" }}>
-          {user.email} · {user.role}
+        <span className="who" title={user.email ?? undefined}>
+          <span className="who-email">{user.email}</span>
+          <span className="tag" data-tone={user.role === "admin" ? "brand" : undefined}>
+            {user.role}
+          </span>
         </span>
       </nav>
       <div className="shell">{children}</div>
-    </>
+    </div>
   );
 }

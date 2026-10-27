@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { InventLogo } from "@/components/InventLogo";
 import { LoginForm } from "./login-form";
 
 /**
@@ -10,12 +11,17 @@ import { LoginForm } from "./login-form";
  */
 export default function Entrar() {
   return (
-    <main className="login">
-      <h1>Console</h1>
-      <p className="muted">IA da Reforma Tributária — Invent Software</p>
-      <Suspense fallback={<p className="muted">Carregando…</p>}>
-        <LoginForm />
-      </Suspense>
+    <main className="console login">
+      <div className="login-card">
+        <InventLogo height={40} />
+        <h1>Console</h1>
+        <p className="muted" style={{ margin: 0 }}>
+          IA da Reforma Tributária
+        </p>
+        <Suspense fallback={<p className="muted">Carregando…</p>}>
+          <LoginForm />
+        </Suspense>
+      </div>
     </main>
   );
 }

@@ -49,7 +49,7 @@ export async function diagnoseSession(): Promise<Record<string, string>> {
   if (!user) {
     return {
       usuario:
-        "sem sessão — entre em /entrar nesta mesma janela e abra o /api/health de novo",
+        "sem sessão; entre em /entrar nesta mesma janela e abra o /api/health de novo",
     };
   }
 

@@ -111,9 +111,9 @@ export default async function WhatsApp({
             <code>EVOLUTION_WEBHOOK_SECRET</code> e o evento <code>MESSAGES_UPSERT</code>.
           </p>
           <p className="notice">
-            Atenção: cada instância tem um único webhook. Se esta instância é o número que
-            hoje atende pelo n8n, o n8n para de receber as mensagens a partir daqui.
-            Comece por um número de teste.
+            Atenção: cada instância tem um único webhook. Se outro sistema ainda recebe as
+            mensagens deste número, ele deixa de receber a partir daqui. Antes de ligar,
+            teste as respostas no Simulador.
           </p>
           <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
             <input

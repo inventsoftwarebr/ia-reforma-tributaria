@@ -73,7 +73,7 @@ export function AddSourceForm() {
       {mode === "file" ? (
         <label>
           <span className="muted">
-            Arquivo (até 4 MB). Em planilha, cada linha vira um trecho que a IA cita —
+            Arquivo (até 4 MB). Em planilha, cada linha vira um trecho que a IA cita,
             ideal para tabelas como a de cClassTrib e CST.
           </span>
           <input

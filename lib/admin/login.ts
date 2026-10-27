@@ -32,7 +32,7 @@ export const LOGIN_WATCHDOG_MS = 20_000;
  */
 export const LOGIN_SLOW = {
   autenticando:
-    'O serviço de login não respondeu em 20 segundos. Abra /api/health e veja a linha "login" — ela diz o que conferir na Vercel.',
+    'O serviço de login não respondeu em 20 segundos. Abra /api/health e veja a linha "login": ela diz o que conferir na Vercel.',
   abrindo:
     'Seu e-mail e senha foram aceitos, mas o painel está demorando para abrir. Abra /api/health e veja as linhas "banco" e "tabelas".',
 } as const;
